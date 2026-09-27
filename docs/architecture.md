@@ -83,11 +83,13 @@ Monorepo, two applications, one shared generated-contract package.
 ├── data/
 │   ├── cost-catalogs/          # seed unit-rate catalogs (YAML)
 │   ├── materials/              # material library (YAML)
+│   ├── rules-profiles/         # BuildingRulesProfile YAML (generic-residential@1, …)
 │   └── fixtures/               # canonical specs/models used by tests on both sides
 ├── docs/
 ├── infra/
-│   ├── docker/                 # Dockerfiles
-│   └── postgres/               # init scripts
+│   └── docker/                 # Dockerfiles
+├── scripts/                    # cross-platform helpers (uv.mjs)
+├── .github/workflows/ci.yml
 ├── docker-compose.yml
 ├── Makefile                    # single entry point for common tasks
 ├── CLAUDE.md

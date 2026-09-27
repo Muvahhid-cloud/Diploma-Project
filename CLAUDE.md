@@ -85,11 +85,13 @@ docs/  infra/  docker-compose.yml  Makefile
 ```
 pnpm install                 # JS deps (workspace)
 pnpm api:install             # Python deps: uv sync in apps/api
-pnpm dev                     # web (3000) + api (8000) locally; needs Postgres (DATABASE_URL)
+pnpm db:local                # embedded PostgreSQL for local dev (no Docker); prints DATABASE_URL; --stop to stop
+pnpm dev                     # web (3000, proxies /api) + api (8000); needs DATABASE_URL in .env
 pnpm docker:up               # docker compose up --build (db, api, web)
 pnpm lint                    # eslint + ruff + import-linter
 pnpm typecheck               # tsc --noEmit + mypy
-pnpm test                    # vitest + pytest
+pnpm test                    # vitest + pytest (pytest auto-starts embedded Postgres unless TEST_DATABASE_URL is set)
+pnpm check                   # lint + typecheck + test
 pnpm migrate                 # alembic upgrade head
 pnpm schema                  # regenerate packages/schema from Pydantic (Phase 1+)
 ```

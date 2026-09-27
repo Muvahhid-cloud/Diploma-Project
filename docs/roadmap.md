@@ -19,18 +19,18 @@ Goal: everything runs with one command; contracts in place. No building features
 
 **Phase 0 verification checklist** (all must be green before Phase 1):
 
-| Check | How |
-|---|---|
-| Frontend setup | `pnpm --filter web build` succeeds; dev server serves `/` |
-| Backend setup | API starts; `GET /health` → 200 |
-| PostgreSQL connection | `GET /health/db` → 200; Alembic `upgrade head` / `downgrade base` succeed |
-| Docker Compose | `docker compose up --build` → db healthy, api healthy, web reachable |
-| Environment configuration | `.env.example` complete; API fails fast with clear error on missing required vars |
-| Project structure | Matches `docs/architecture.md` §3–§5 |
-| Lint / type check | `pnpm lint`, `pnpm typecheck` (ruff, mypy, import-linter, ESLint, tsc) clean |
-| Basic tests | `pnpm test`: API (health, auth, projects) + web (unit) pass |
-| CI-ready | `.github/workflows/ci.yml` runs all of the above on push/PR |
-
+| Check | How | Result (2026-09-27, Windows dev machine) |
+|---|---|---|
+| Frontend setup | `pnpm build:web` succeeds; dev server serves `/` | ☑ Next.js 16.3 build OK; pages served |
+| Backend setup | API starts; `GET /health` → 200 | ☑ |
+| PostgreSQL connection | `GET /health/db` → 200; Alembic `upgrade head` / `downgrade base` succeed | ☑ PostgreSQL 16.2 (embedded via `pnpm db:local`); migration round-trip + model/migration drift tests pass |
+| Docker Compose | `docker compose up --build` → db healthy, api healthy, web reachable | ☐ **Not verified** — Docker is not installed on the dev machine. Files written; CI `docker` job builds images |
+| Environment configuration | `.env.example` complete; API fails fast with clear error on missing/unsafe vars | ☑ (tests cover async-driver URL, secret length, production guards) |
+| Project structure | Matches `docs/architecture.md` §3–§5 | ☑ (domain modules stubbed as packages) |
+| Lint / type check | `pnpm lint`, `pnpm typecheck` clean | ☑ ruff, ruff format, import-linter (2 contracts kept), mypy strict, ESLint, tsc |
+| Basic tests | `pnpm test` | ☑ API 29 passed · web 13 passed |
+| Manual E2E | register → project list → create → editor shell → reload keeps session → sign out → guarded redirect → login returns to `next` | ☑ in browser against local API + DB |
+| CI-ready | `.github/workflows/ci.yml` | ☑ written (api / web / docker jobs); ☐ not yet run — no remote configured |
 - **Exit**: sign up → create project → see empty editor, in Docker, CI green
 
 ## Phase 1 — Hand-authored model → procedural 3D (no AI, no layout) ☐

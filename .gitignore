@@ -37,3 +37,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Embedded local PostgreSQL (pnpm db:local)
+.localdb/
