@@ -60,7 +60,8 @@ docs/  infra/  docker-compose.yml  Makefile
 ```
 
 - Backend module shape: `router.py` (HTTP only) → `service.py` (use cases, transactions) → `repository.py` (SQLAlchemy) ; `models.py` ORM, `schemas.py` DTOs.
-- Frontend: `engine/` is pure TS (no React, no stores) — geometry builders `(element, ctx) → RenderDescriptor[]`. `viewer/` is R3F. `features/*` are vertical slices.
+- Frontend: `engine/` is pure TS (no React, no stores) — geometry builders `(element, ctx) → RenderDescriptor[]`, all drawing through `engine/geometry/mesh-builder.ts`. `viewer/` is R3F. `features/*` are vertical slices.
+- 3D rules: model→world conversion only via `engine/math/coords.ts` + the `ModelRoot` group; materials only from `data/materials/library.json` via `MaterialCache`; every mesh carries only `{ elementId, part }` and maps to one model element; new element types need a schema class, a builder in `engine/builders/registry.ts`, and tests (see `docs/3d-engine.md`).
 - State: server state in TanStack Query; the model being edited + view state (selection, isolation, layers, camera mode) in Zustand with granular selectors.
 
 ## Conventions
@@ -78,7 +79,7 @@ docs/  infra/  docker-compose.yml  Makefile
 - Every domain function gets unit tests; layout changes need invariant (Hypothesis) tests and, if output changes, deliberate golden-file updates (explain why in the commit).
 - Bug fix ⇒ regression test first.
 - Before saying work is done: run `pnpm lint`, `pnpm typecheck`, `pnpm test` (or the per-app equivalents) and report real results.
-- Changing Pydantic building schemas ⇒ run `pnpm schema` and commit generated output.
+- Changing Pydantic building schemas ⇒ run `pnpm schema` and commit generated output. Changing the demo fixture script ⇒ run `pnpm fixtures`.
 
 ## Commands (run from repo root)
 
@@ -93,7 +94,8 @@ pnpm typecheck               # tsc --noEmit + mypy
 pnpm test                    # vitest + pytest (pytest auto-starts embedded Postgres unless TEST_DATABASE_URL is set)
 pnpm check                   # lint + typecheck + test
 pnpm migrate                 # alembic upgrade head
-pnpm schema                  # regenerate packages/schema from Pydantic (Phase 1+)
+pnpm schema                  # regenerate packages/schema (JSON Schema + TS types) from Pydantic
+pnpm fixtures                # regenerate data/fixtures/demo-house.model.json from its authoring script
 ```
 
 Local environment notes (dev machine is Windows): `uv` may only be available as `py -3.12 -m uv`; the scripts in `package.json` call `uv` through `scripts/uv.mjs`, which falls back automatically. `make` is optional.

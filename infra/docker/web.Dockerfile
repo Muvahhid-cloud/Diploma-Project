@@ -14,6 +14,8 @@ ARG API_PROXY_URL=http://api:8000
 ENV API_PROXY_URL=$API_PROXY_URL NEXT_TELEMETRY_DISABLED=1
 COPY apps/web apps/web
 COPY packages/schema packages/schema
+# Material library + fixtures are imported at build time (@data/*).
+COPY data data
 RUN pnpm --filter @buildai/web build
 
 FROM node:22-alpine AS runtime

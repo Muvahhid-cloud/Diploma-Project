@@ -1,6 +1,6 @@
 # Building Model
 
-Status: **Accepted (v0.2)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
+Status: **Implemented for Phase 1 (v0.3)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
 
 There are **two** schemas, deliberately separated:
 
@@ -116,118 +116,108 @@ Every issue: `{ severity, code, path (JSON pointer), message, suggestion? }`. Er
 
 ## 3. BuildingModel (resolved)
 
+Implemented in `apps/api/app/modules/building/{primitives,enums,elements,model}.py` (schema_version **1.0.0**). JSON Schema, TS types and the Zod validator in `packages/schema` are generated from these classes (`pnpm schema`).
+
 ```jsonc
 {
   "schema_version": "1.0.0",
-  "id": "uuid",
-  "engine_version": "layout@0.3.1",
-  "seed": 42,
-  "spec_hash": "sha256:…",           // spec this was generated from
+  "id": "uuid",                       // the "building" object id
+  "building": { "name": "Demo family house", "building_type": "single_family_house", "description": "…" },
   "units": "m",
-  "levels": [ Level, ... ],
-  "elements": [ Element, ... ],      // discriminated union on "type"
-  "systems": [ System, ... ],        // MEP systems
-  "metadata": { "created_at": "...", "generator": "layout" }
+  "engine_version": "fixture@1",      // layout@x.y.z once generated (Phase 2)
+  "seed": null,                       // layout seed (Phase 2)
+  "levels": [ Level, ... ],           // the "floor" objects
+  "elements": [ Element, ... ],       // discriminated union on "type"
+  "metadata": { "source": "fixture" | "layout" | "operations", "generator": "…" }
 }
 ```
 
-### 3.1 Level
+`spec_hash` and `systems` (MEP) are added as minor schema versions in Phases 2 and 6.
+
+### 3.1 Level ("floor")
 
 ```jsonc
-{ "id": "uuid", "name": "Ground floor", "index": 0, "elevation_m": 0.0, "height_m": 3.0 }
+{ "id": "uuid", "name": "Floor 1", "index": 0, "elevation": 0.0, "height": 3.0, "semantic_key": "level:L0" }
 ```
+
+`elevation` = finished floor level above level 0; `height` = floor-to-floor. All lengths are meters (no `_m` suffixes in the model).
 
 ### 3.2 Element base (every object)
 
-The product requirement: *every object has UUID, type, dimensions, position, rotation, material, properties, relationships.*
-
 ```jsonc
 {
-  "id": "uuid",
-  "type": "wall",                     // discriminator
-  "name": "Exterior wall S-1",
-  "layer": "architecture",            // architecture | structure | furniture | plumbing | electrical | hvac | site
-  "level_id": "uuid" | null,          // null for site elements / multi-level (e.g. stair core ref)
-  "position": { "x": 0, "y": 0, "z": 0 },      // local anchor; meaning defined per type (below)
-  "rotation": { "x": 0, "y": 0, "z": 0 },      // radians, XYZ Euler; most elements use only z (yaw)
-  "dimensions": { ... },              // type-specific, typed
-  "material_id": "white_render" | null,        // primary material; layered build-ups in properties
-  "properties": { ... },              // type-specific, typed (NOT a free-form bag in the schema)
-  "relationships": [ { "kind": "hosted_by", "target_id": "uuid" } ],
-  "origin": "generated" | "user",     // who created it
-  "locked": false,                    // user-locked: regeneration must preserve
-  "semantic_key": "wall:ext:L0:S:1"   // for stable IDs across regeneration
+  "id": "uuid",                        // stable: uuid5(namespace, semantic_key) for fixtures
+  "type": "wall",                      // discriminator
+  "name": "W-G01",
+  "layer": "structure",                // architecture | structure | furniture | plumbing | electrical | hvac | fire_safety | landscaping
+  "level_id": "uuid",
+  "position": { "x": 0, "y": 0, "z": 0 },   // element-local anchor, meaning per type (below)
+  "rotation": { "x": 0, "y": 0, "z": 0 },   // radians, XYZ Euler; most elements use z (yaw)
+  "dimensions": { ... },               // typed per element type
+  "material_id": "brick" | null,       // id in data/materials/library.json
+  "properties": { ... },               // typed per element type (no free-form bag)
+  "relationships": [ { "kind": "bounds", "target_id": "uuid" } ],
+  "origin": "generated" | "user",
+  "locked": false,
+  "semantic_key": "wall:G-S"
 }
 ```
 
-`position`/`rotation` are *element-local anchors*: absolute `z` is `level.elevation_m + position.z`. `properties` is typed per element type in Pydantic (we keep an `extra: dict` escape hatch named `custom` for user-defined data only).
+Absolute elevation = `level.elevation + position.z`. Polygon properties (room boundary, slab/roof outline) are relative to `position`, rotated by `rotation.z`. All models are `extra="forbid"`; lengths are rounded to 1 mm, areas to 0.01 m², angles to 1e-6 rad on validation.
 
-### 3.3 Element types (v1)
+### 3.3 Element types (implemented in schema 1.0.0)
 
-| type | layer | position = | dimensions | key properties |
+| type | usual layer | position = | dimensions | properties |
 |---|---|---|---|---|
-| `wall` | architecture / structure | wall axis start point | `length, thickness, height` (rotation.z = axis direction) | `wall_kind` (exterior/interior/partition), `alignment` (center/left/right), `build_up` (layers w/ material + thickness), `load_bearing` |
-| `room` (space) | architecture | origin of boundary polygon | `area, perimeter, height` (derived) | `room_type, spec_key, boundary: [Vec2]` (CCW, rectilinear v1), `finishes {floor, wall, ceiling}`, `zone` (public/private/service) |
-| `door` | architecture | offset along host wall axis (x), 0, 0 | `width, height, thickness` | `swing` (left/right/sliding/double), `opens_into` room id, `door_kind` (entrance/interior/garage) |
-| `window` | architecture | offset along host wall axis, sill height as z | `width, height` | `window_kind` (fixed/casement/sliding/panoramic), `glazing`, `frame_material` |
-| `slab` | structure | origin of outline | `thickness, area` | `outline: [Vec2]`, `holes: [[Vec2]]`, `slab_kind` (ground/floor/balcony) |
-| `roof` | architecture | footprint origin | `thickness, overhang` | `roof_type, pitch, outline, ridge_axis` |
-| `stair` | architecture | bottom start | `width, run_length, rise_total` | `stair_type, risers, riser_h, tread_d`, connects levels |
-| `column` | structure | base center | `width, depth, height` | `section` |
-| `beam` | structure | start point | `length, width, depth` | |
-| `railing` | architecture | start | `length, height` | balcony/stair |
-| `pipe_segment` | plumbing | start point | `length, diameter` | `start, end (Vec3)`, `pipe_kind` (cold/hot/drain/vent), `slope` |
-| `duct_segment` | hvac | start point | `length, width, height` or `diameter` | `start, end`, `duct_kind` (supply/return/exhaust) |
-| `conduit_run` | electrical | start | `length` | `polyline: [Vec3]`, `cable_type`, `circuit_id` |
-| `fixture` | plumbing / electrical | insertion point | bounding box | `fixture_kind` (wc, basin, shower, bathtub, kitchen_sink, outlet, switch, light, …), catalog id |
-| `equipment` | plumbing / electrical / hvac | insertion point | bounding box | `equipment_kind` (water_heater, heat_pump, ac_indoor, ac_outdoor, distribution_board, …) |
-| `terminal` | hvac | insertion point | `width, depth` | diffuser/grille |
-| `furniture` | furniture | insertion point (base center) | `width, depth, height` | `furniture_kind` (bed, sofa, dining_table, chair, wardrobe, kitchen_counter, kitchen_island, desk, car, …); visual only, excluded from cost by default |
+| `wall` | structure (load-bearing exterior) / architecture | axis start; `rotation.z` = axis direction | `length, thickness, height` | `wall_kind` (exterior/interior/partition), `alignment` (center/left/right), `load_bearing`, `finish_left_id`, `finish_right_id` (left = +normal side; exterior walls are authored CCW so left = interior) |
+| `door` | architecture | host-wall-local: x = offset of the start edge, z = 0 | `width, height, thickness` | `door_kind` (entrance/interior/sliding/garage), `swing` (left/right/double/sliding), `frame_material_id` |
+| `window` | architecture | host-wall-local: x = offset, z = sill height | `width, height` | `window_kind` (fixed/casement/sliding/panoramic), `frame_material_id`, `mullions` |
+| `room` | architecture | boundary origin | `area, perimeter, height` (validated against the boundary) | `room_type`, `zone`, `boundary` (CCW, rectilinear, wall centerlines), `floor_material_id` |
+| `slab` | structure | outline origin; **top face** at `position.z` | `thickness, area` (outline − holes) | `slab_kind` (ground/floor/balcony), `outline`, `holes` |
+| `stair` | structure | bottom corner at the first riser; flight along local +x, width along local +y | `width, run_length, rise_total` | `stair_type` (straight), `risers`, `riser_height`, `tread_depth`, `from_level_id`, `to_level_id` |
+| `roof` | architecture | outline origin; `position.z` = top of covering at the eaves | `thickness, overhang` | `roof_type` (flat/gable/hip), `outline` (eaves, rectangle for pitched), `pitch_deg`, `ridge_axis`, `parapet_height` |
+| `railing` | architecture | start of the base line; runs along local +x | `length, height` | `railing_kind` (glass/bars), `rise` (0 = level, > 0 = sloped/stair), `post_spacing` |
+| `furniture` | furniture | base center on the floor; front faces local −y | `width, depth, height` | `furniture_kind` (18 kinds: sofa, armchair, coffee_table, tv_unit, dining_table, chair, bed, nightstand, wardrobe, bookshelf, desk, kitchen_counter, kitchen_island, fridge, toilet, basin, bathtub, shower), `asset_id` (GLB/glTF catalog id, null = procedural) |
 
-Wall derived geometry (not stored, computed by helpers used by both Python & TS):
-`start = position`, `end = position + length·(cos θ, sin θ)`, `θ = rotation.z`.
+Planned types (later phases): `column`, `beam` (structure); `pipe_segment`, `fixture`, `equipment` (plumbing); `conduit_run` (electrical); `duct_segment`, `terminal` (HVAC); `system` objects for MEP networks.
 
-Openings are positioned in **host-wall-local coordinates** (`x` along axis from wall start, `z` = sill height), so moving a wall moves its openings automatically.
+Wall derived geometry (not stored): `start = position`, `end = position + length·(cos θ, sin θ)`, `θ = rotation.z`.
 
 ### 3.4 Relationships
 
-Directed, typed edges stored on the *source* element. The validator guarantees referential integrity; an index of reverse edges is built in memory on load.
+Directed, typed edges stored on the source element; targets must exist (API validator + web index).
 
 | kind | from → to | meaning |
 |---|---|---|
-| `contained_in` | any → level | (redundant with `level_id`, not stored; derived) |
-| `hosted_by` | door/window → wall | opening lives in wall |
-| `bounds` | wall → room | wall is a boundary of room (both sides: one edge per room) |
-| `adjacent_to` | room → room | share a wall |
-| `connects` | door → room | door connects rooms (2 edges, or 1 + exterior) |
-| `supports` | column/wall/beam → slab/beam | structural load path |
-| `serves` | fixture/terminal/equipment → room | located in / serves room |
-| `connected_to` | MEP element → MEP element | network topology |
-| `part_of_system` | MEP element → system | membership |
+| `hosted_by` | door/window → wall | the opening lives in that wall (exactly one) |
+| `bounds` | wall → room | the wall's axis runs along the room's boundary |
+| `adjacent_to` | room → room | the rooms share a boundary edge (with or without a wall) |
+| `connects` | door → room | rooms joined by the door (2, or 1 for exterior doors) |
+| `supports` | wall → slab/roof | load path (ground facades carry the floor slab, upper facades the roof) |
+| `located_in` | furniture/stair/railing → room | placement |
+| `serves`, `connected_to`, `part_of_system` | MEP (Phase 6) | reserved |
 
-### 3.5 System (MEP)
-
-```jsonc
-{ "id": "uuid", "name": "Domestic cold water", "discipline": "plumbing",
-  "system_kind": "domestic_cold_water",   // cold_water | hot_water | sanitary_drain | vent | lighting_circuit | power_circuit | supply_air | return_air | refrigerant
-  "source_id": "uuid", "properties": { "circuit_breaker_a": 16 } }
-```
+Level membership is `level_id` (not a relationship).
 
 ---
 
-## 4. Invariants (enforced by `building/validation/model_rules.py`)
+## 4. Invariants (enforced by `building/validation.py`)
 
-1. All IDs unique; all relationship targets exist; all `level_id`s exist.
-2. Rooms on the same level do not overlap (area of intersection < EPS).
-3. Every room is reachable from the entrance via doors/stairs (graph connectivity).
-4. Every opening lies fully within its host wall (`0 ≤ x`, `x + width ≤ length`, `z + height ≤ wall height`), and openings on a wall don't overlap.
-5. Wall heights ≤ level height; slabs cover every room footprint.
-6. Habitable rooms (bedroom, living, study, kitchen) have ≥1 window unless user-overridden.
-7. Wet-room fixtures are in rooms with `wet_room=true`.
-8. Stairs connect consecutive levels and have headroom (slab hole present above).
-9. No NaN/Infinity; all dimensions > 0.
+Errors (model rejected):
 
-These are also Hypothesis properties run over thousands of random specs.
+1. Unique ids across model, levels and elements; unique semantic keys; level indices 0..n-1.
+2. Every `level_id` and relationship target exists.
+3. Every material id (element, finishes, frames, floor finishes) exists in the material library (when the library is supplied).
+4. Doors/windows: exactly one `hosted_by` wall on the same level; fully inside the wall (`0 ≤ x`, `x + width ≤ length`, `z + height ≤ wall height`); no overlaps on the same wall.
+5. Wall height ≤ level height.
+6. Room boundaries: CCW, rectilinear, simple; `area`/`perimeter` match the boundary; rooms on a level do not overlap.
+7. Slabs: CCW simple outline, holes inside, `area` = outline − holes. Pitched roofs need a rectangular outline.
+8. Stairs: `risers × riser_height ≈ rise_total` and `(risers − 1) × tread_depth ≈ run_length` (±0.5 mm rounding per riser); start on `from_level`, reach the next level; `rise_total` = level difference.
+9. Railings no steeper than 45°. Pydantic: all dimensions finite and > 0 (area/overhang ≥ 0).
+
+Warnings (reported, model accepted): room not fully supported by a slab; habitable room (living, dining, kitchen, bedroom, study) without a window or glazed door on its own boundary; furniture outside every room.
+
+Planned (Phase 2, with Hypothesis properties over generated models): reachability of every room from the entrance, stair headroom, wet-room fixture placement.
 
 ---
 
@@ -261,23 +251,14 @@ Each operation also records its **inverse** for undo within a draft. Batches tha
 
 ## 6. Discipline layers & materials
 
-- Layers: `architecture, structure, furniture, plumbing, electrical, hvac, site`. Exactly one per element.
-- Materials are referenced by id into the **material library** (`data/materials/*.yaml`):
+- Layers: `architecture, structure, furniture, plumbing, electrical, hvac, fire_safety, landscaping`. Exactly one per element. Phase 1 populates the first three; the viewer's layer manager lists the rest as planned.
+- Materials are referenced by id into the shared **material library** `data/materials/library.json` (JSON so both Python and TypeScript read it without extra dependencies). The API validates ids against it; the web renderer builds one shared THREE material per id from it.
 
-```yaml
-- id: white_render
-  name: White silicone render
-  category: facade_finish
-  color: "#f2f1ec"
-  roughness: 0.9
-  texture: null
-  unit: m2
-  waste_factor: 0.05
-  item_code: FIN.FACADE.RENDER
-  density_kg_m3: null
+```json
+{ "id": "brick", "name": "Brick", "category": "masonry", "color": "#9a5038", "roughness": 0.88, "metalness": 0 }
 ```
 
-The same library drives rendering (color/roughness/texture) and costing (`item_code`, waste factor).
+Required presets: concrete, brick, glass, wood, roof, floor, interior_wall, exterior_wall (plus tile, parquet, decking, window_frame, wood_dark, metal, fabric, fabric_light, ceramic, countertop, cabinet, screen). Costing fields (`item_code`, `unit`, `waste_factor`) are added in Phase 4; prices never live here (they live in cost catalogs).
 
 ---
 
@@ -291,7 +272,7 @@ Each generated element gets a `semantic_key` (e.g. `room:bedroom_master:0`, `wal
 
 - `schema_version` follows semver. Additive optional fields → minor. Anything else → major with a migration function in `building/migrations/` (`v1_to_v2(doc: dict) -> dict`).
 - Stored documents are upgraded on read; tests keep one fixture per historical version.
-- After changing Pydantic models: `pnpm schema` regenerates `packages/schema` (JSON Schema, TS types, Zod). CI fails on drift.
+- After changing Pydantic models: `pnpm schema` regenerates `packages/schema` (JSON Schema → TS types via json-schema-to-typescript; the Zod validator is built at runtime from the same JSON Schema with `z.fromJSONSchema`). After changing the demo fixture script: `pnpm fixtures`. Pytest fails if the committed JSON Schema or fixture is stale; CI fails if the generated TS is stale.
 
 ## 9. IFC alignment (future)
 

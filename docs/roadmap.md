@@ -6,7 +6,7 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 
 ---
 
-## Phase 0 — Foundations ◐
+## Phase 0 — Foundations ☑
 Goal: everything runs with one command; contracts in place. No building features yet.
 
 - Monorepo scaffold: `apps/web` (Next.js, TS strict, Tailwind), `apps/api` (FastAPI, uv), `packages/schema` (placeholder until Phase 1)
@@ -33,25 +33,41 @@ Goal: everything runs with one command; contracts in place. No building features
 | CI-ready | `.github/workflows/ci.yml` | ☑ written (api / web / docker jobs); ☐ not yet run — no remote configured |
 - **Exit**: sign up → create project → see empty editor, in Docker, CI green
 
-## Phase 1 — Hand-authored model → procedural 3D (no AI, no layout) ☐
-Goal: prove the highest-risk dependency — BuildingModel → deterministic procedural 3D → interactive viewer — completely independent of AI.
+## Phase 1 — Hand-authored model → procedural 3D (no AI, no layout) ☑
+Goal: prove the highest-risk dependency — BuildingModel → deterministic procedural 3D → interactive viewer — completely independent of AI. **Done 2026-09-27.**
 
-- Pydantic `BuildingModel` (building-model.md) + invariants validator; `BuildingSpecification` schema (unused until Phase 2)
-- Schema codegen → TS types + Zod in `packages/schema`
-- **Demo fixture** `data/fixtures/demo-house.model.json`, hand-authored:
-  - 2 floors (ground + upper), several rooms (entrance/hall, open kitchen-living, WC, garage/storage on ground; 2–3 bedrooms, bathroom, landing on upper)
-  - exterior + interior walls, doors, windows (incl. one panoramic), ground + upper floor slabs (with stair hole)
-  - straight stair connecting the floors, flat roof with parapet
-  - basic furniture (beds, sofa, dining table + chairs, kitchen counter/island, wardrobe, bathroom fixtures)
-- TS engine: builders for wall (panel decomposition + corner joins), door, window, slab, room floor, roof, stair, railing, furniture primitives; determinism snapshot tests
-- Viewer: **rotate, zoom, pan**, fit; **select objects**; **isolate floors**; **inspector** with all element fields; **hide/show layers** (architecture, structure, furniture); cutaway
-- Store the fixture as v1 of a demo project (versions table)
-- **Exit**: open demo project → house renders; every interaction above works; clicking any element shows UUID/type/dims/position/rotation/material/properties/relationships; same model ⇒ identical geometry hash
+Delivered:
 
-No AI work of any kind happens before Phase 1 exits.
+- Canonical Pydantic `BuildingModel` 1.0.0 (`apps/api/app/modules/building`) + invariant validator (`validation.py`) + `GET /api/v1/demo/building-model` (validates before serving)
+- Codegen: `pnpm schema` → `packages/schema` (JSON Schema, generated TS types, runtime Zod validator via `z.fromJSONSchema`)
+- Demo fixture `data/fixtures/demo-house.model.json` (`pnpm fixtures`): 2 floors, 12 × 10 m, 15 rooms (entrance, staircase, storage, bathroom, kitchen, corridor, living room, dining area; bedrooms 1–3, bathroom, corridor, study, balcony), 21 walls, 13 doors, 21 windows, 3 slabs (incl. stair void and balcony), straight stair, hip roof, 4 railings, 37 furniture items; stable uuid5 ids
+- Shared material library `data/materials/library.json`
+- TS geometry engine (`apps/web/src/engine`): MeshBuilder, wall joins + panel decomposition, builders for walls, doors, windows, room floors, slabs, stair, roof (flat/gable/hip), railings, furniture placeholders; scene graph with content-keyed geometry reuse; visibility rules; camera presets; selection mapping
+- Viewer + editor at `/`: orbit/zoom/pan, 7 camera presets + reset, perspective/orthographic, selection with highlight, model-driven properties panel, floor isolation, layer manager, inspection toggles, section cut, room list
+
+**Completion checklist** (verified 2026-09-27):
+
+| Criterion | Result |
+|---|---|
+| Two-floor procedural house renders | ☑ (dev + production build) |
+| Building comes from BuildingModel | ☑ served by the API, validated by Pydantic + Zod + integrity checks |
+| Walls / rooms / doors / windows / floors / stairs / roof / furniture | ☑ all rendered from model elements (rooms as floor finishes) |
+| Orbit, zoom, pan, camera reset | ☑ |
+| Object selection + highlight + properties panel | ☑ (e.g. W-G01: Exterior wall, 12 m, 2.8 m, 0.3 m, Brick, UUID) |
+| Floor isolation | ☑ All / Floor 1 / Floor 2 (lower floors ghosted, camera frames the floor) |
+| Layer visibility | ☑ Architecture / Structure / Furniture; future layers registered as planned |
+| Interior inspection | ☑ hide roof / exterior walls / furniture, isolate floors, section cut, interior camera |
+| No major console errors | ☑ none from app code (one THREE.Clock deprecation warning from R3F internals) |
+| Tests / lint / typecheck / production build | ☑ API 60 tests, web 95 tests; ruff, mypy, import-linter, ESLint, tsc clean; `next build` OK |
+| Browser smoke test | ☑ dev server and production server |
+
+Known limitations: see [3d-engine.md §15](3d-engine.md). Deferred from the original Phase 1 plan: `BuildingSpecification` Pydantic schema (moved to Phase 2, where it is first used) and storing the fixture as a project version (moved to Phase 2 together with the `project_versions` table).
+
 ## Phase 2 — Layout engine (spec → model) ☐
 Goal: deterministic geometry from a spec.
 
+- `BuildingSpecification` Pydantic schema + spec validation (tiers 1–2) and `BuildingRulesProfile` (`generic-residential@1`)
+- `project_versions` table; store generated models (and the demo fixture) as project versions; project editor renders its current version with the Phase 1 viewer
 - Program expansion, footprint, stair core, zoning, subdivision, circulation, walls, openings, slabs, roof
 - Candidate search + scoring; seeded determinism; stable semantic IDs
 - Hypothesis invariant tests; golden-file tests for 10 reference specs

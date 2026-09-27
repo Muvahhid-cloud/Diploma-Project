@@ -14,6 +14,7 @@ dependencies = [
     "alembic>=1.13",
     "argon2-cffi>=23.1",
     "pyjwt>=2.9",
+    "shapely>=2.1",
 ]
 
 [dependency-groups]
@@ -27,6 +28,7 @@ dev = [
     "import-linter>=2.1",
     # Embedded PostgreSQL for local tests/dev when Docker is unavailable (not used in CI/Docker).
     "pgserver>=0.1.4",
+    "types-shapely>=2.1",
 ]
 
 [tool.uv]
@@ -47,6 +49,8 @@ known-third-party = ["alembic"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "S107"]
+# Authoring scripts use short UPPERCASE aliases to keep data tables readable.
+"app/modules/building/fixtures/**" = ["N806"]
 
 [tool.mypy]
 python_version = "3.12"

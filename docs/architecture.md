@@ -82,7 +82,7 @@ Monorepo, two applications, one shared generated-contract package.
 │   └── schema/                 # GENERATED: JSON Schema, TS types, Zod validators
 ├── data/
 │   ├── cost-catalogs/          # seed unit-rate catalogs (YAML)
-│   ├── materials/              # material library (YAML)
+│   ├── materials/              # material library (library.json: render + validation; costing fields in Phase 4)
 │   ├── rules-profiles/         # BuildingRulesProfile YAML (generic-residential@1, …)
 │   └── fixtures/               # canonical specs/models used by tests on both sides
 ├── docs/
@@ -183,6 +183,7 @@ All routes under `/api/v1`. OpenAPI generated automatically.
 | POST | `/projects/{id}/versions/{vid}/analysis` | AI analysis job |
 | POST | `/projects/{id}/versions/{vid}/reports` | Report generation job |
 | GET | `/cost-catalogs` | Available catalogs (region/currency/date) |
+| GET | `/demo/building-model` | Public: the hand-authored demo house, validated before serving (Phase 1) |
 
 ### 4.2 Long-running work
 

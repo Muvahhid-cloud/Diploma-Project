@@ -15,6 +15,8 @@ COPY apps/api/pyproject.toml apps/api/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY apps/api/ ./
+# Shared data (material library, fixtures); Settings.data_dir falls back to /data here.
+COPY data/ /data/
 
 RUN useradd --create-home --uid 10001 app
 USER app

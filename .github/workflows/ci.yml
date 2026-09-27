@@ -57,6 +57,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Generated contracts are up to date
+        run: pnpm --filter @buildai/schema generate && git diff --exit-code packages/schema
       - run: pnpm lint:web
       - run: pnpm typecheck:web
       - run: pnpm test:web

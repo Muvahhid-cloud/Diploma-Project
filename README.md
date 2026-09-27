@@ -16,7 +16,9 @@ Initial market: **Kazakhstan (KZT)**. Costing is currency-agnostic.
 
 ## Status
 
-**Phase 0 — Foundations** (monorepo, API, web, auth, projects, Docker, CI). Next: **Phase 1** — hand-authored BuildingModel → procedural 3D viewer. See [docs/roadmap.md](docs/roadmap.md).
+**Phase 1 complete — procedural 3D building engine.** Open the app at http://localhost:3000 to explore a hand-authored two-floor demo house that is generated entirely from its structured BuildingModel: walls with real door/window openings, rooms, slabs, stair, hip roof, balcony and furniture. Rotate/zoom/pan, camera presets, click any object to inspect its model properties, isolate floors, toggle layers, hide the roof or facades, or cut a section.
+
+Next: **Phase 2** — BuildingSpecification → deterministic layout engine → BuildingModel. AI comes in Phase 3. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Prerequisites
 
@@ -58,6 +60,8 @@ Stop the embedded database with `pnpm db:local --stop`. You can instead point `D
 | `pnpm test` | Vitest (web), pytest (API, real PostgreSQL, includes migration checks) |
 | `pnpm check` | lint + typecheck + test |
 | `pnpm migrate` | `alembic upgrade head` |
+| `pnpm schema` | Regenerate `packages/schema` (JSON Schema + TS types) from the Pydantic BuildingModel |
+| `pnpm fixtures` | Regenerate the demo house fixture from its authoring script |
 | `pnpm build:web` | Production Next.js build |
 | `pnpm docker:up` / `docker:down` | Compose stack |
 
@@ -66,10 +70,10 @@ API tests use `TEST_DATABASE_URL` if set (CI); otherwise they start an embedded 
 ## Repository layout
 
 ```
-apps/web/        Next.js (App Router) + React Three Fiber viewer (Phase 1)
-apps/api/        FastAPI modular monolith (auth, projects; domain modules stubbed)
-packages/schema/ Generated contracts from Pydantic (Phase 1)
-data/            Materials, cost catalogs, rules profiles, fixtures (Phase 1+)
+apps/web/        Next.js (App Router): editor UI, engine/ (pure-TS geometry), viewer/ (R3F)
+apps/api/        FastAPI modular monolith: auth, projects, building model + validation, demo endpoint
+packages/schema/ Contracts generated from Pydantic (JSON Schema, TS types, Zod validator)
+data/            Material library, demo fixture (later: cost catalogs, rules profiles)
 docs/            Architecture and design documents
 infra/docker/    Dockerfiles
 scripts/         Cross-platform helper scripts

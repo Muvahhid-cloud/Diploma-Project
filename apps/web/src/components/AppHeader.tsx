@@ -23,6 +23,16 @@ export function AppHeader() {
       <Link href="/" className="font-semibold tracking-tight">
         BuildAI 3D
       </Link>
+      {!user && (
+        <nav className="ml-auto flex items-center gap-4 text-sm">
+          <Link href="/projects" className="hover:underline">
+            Projects
+          </Link>
+          <Link href="/login" className="hover:underline">
+            Sign in
+          </Link>
+        </nav>
+      )}
       {user && (
         <nav className="ml-auto flex items-center gap-4 text-sm">
           <Link href="/projects" className="hover:underline">

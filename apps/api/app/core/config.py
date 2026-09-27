@@ -5,6 +5,7 @@ Required settings have no default: the app refuses to start without them.
 
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import Field, PostgresDsn, field_validator, model_validator
@@ -17,6 +18,13 @@ class Environment(StrEnum):
     PRODUCTION = "production"
 
 
+def _default_data_dir() -> Path:
+    """Repo `data/` when running from a checkout; `/data` inside the Docker image."""
+    here = Path(__file__).resolve()
+    repo_data = here.parents[4] / "data" if len(here.parents) > 4 else None
+    return repo_data if repo_data is not None and repo_data.is_dir() else Path("/data")
+
+
 class Settings(BaseSettings):
     # Repo-root .env (when run from apps/api) then a local override; missing files are ignored.
     model_config = SettingsConfigDict(
@@ -25,6 +33,9 @@ class Settings(BaseSettings):
 
     environment: Environment = Environment.DEVELOPMENT
     log_level: str = "INFO"
+
+    # Shared data: material library, fixtures (and later catalogs / rules profiles).
+    data_dir: Path = Field(default_factory=_default_data_dir)
 
     # PostgreSQL, async driver: postgresql+asyncpg://user:pass@host:5432/db
     database_url: PostgresDsn

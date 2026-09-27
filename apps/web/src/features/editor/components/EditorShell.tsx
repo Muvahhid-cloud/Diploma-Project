@@ -44,9 +44,15 @@ export function EditorShell({ projectId }: { projectId: string }) {
         <Panel title="Model tree">No building model yet.</Panel>
         <section
           aria-label="3D viewer"
-          className="flex items-center justify-center bg-neutral-100 text-sm text-neutral-500 dark:bg-neutral-900"
+          className="flex flex-col items-center justify-center gap-2 bg-neutral-100 text-sm text-neutral-500 dark:bg-neutral-900"
         >
-          3D viewer — arrives in Phase 1 (hand-authored demo house)
+          <p>
+            This project has no building model yet — models are generated from specifications in
+            Phase 2.
+          </p>
+          <Link href="/" className="text-blue-700 underline dark:text-blue-400">
+            Open the procedural demo house
+          </Link>
         </section>
         <Panel title="Inspector">Select an object to inspect its properties.</Panel>
       </div>

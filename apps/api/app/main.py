@@ -5,6 +5,7 @@ from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
 from app.modules.auth.router import router as auth_router
+from app.modules.demo.router import router as demo_router
 from app.modules.health.router import router as health_router
 from app.modules.projects.router import router as projects_router
 
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     v1 = APIRouter(prefix="/api/v1")
     v1.include_router(auth_router)
     v1.include_router(projects_router)
+    v1.include_router(demo_router)
     app.include_router(v1)
     return app
 
