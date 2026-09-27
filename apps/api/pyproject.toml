@@ -15,6 +15,8 @@ dependencies = [
     "argon2-cffi>=23.1",
     "pyjwt>=2.9",
     "shapely>=2.1",
+    # Rules profiles are human-edited YAML data files (data/rules-profiles).
+    "pyyaml>=6.0",
 ]
 
 [dependency-groups]
@@ -29,6 +31,7 @@ dev = [
     # Embedded PostgreSQL for local tests/dev when Docker is unavailable (not used in CI/Docker).
     "pgserver>=0.1.4",
     "types-shapely>=2.1",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.uv]

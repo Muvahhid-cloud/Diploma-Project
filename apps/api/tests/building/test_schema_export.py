@@ -1,13 +1,28 @@
 import json
 
-from app.modules.building.export_schema import building_model_json_schema
-from tests.building.helpers import SCHEMA_PATH
+from app.modules.building.export_schema import (
+    building_model_json_schema,
+    building_specification_json_schema,
+)
+from tests.building.helpers import SCHEMA_PATH, SPEC_SCHEMA_PATH
 
 
 def test_committed_json_schema_is_up_to_date() -> None:
     # packages/schema is generated from Pydantic; regenerate with `pnpm schema`.
     committed = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     assert committed == building_model_json_schema()
+
+
+def test_committed_spec_json_schema_is_up_to_date() -> None:
+    committed = json.loads(SPEC_SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert committed == building_specification_json_schema()
+
+
+def test_spec_schema_has_no_geometry() -> None:
+    # AI and forms produce intent only (CLAUDE.md rule 2): no coordinates, no element ids.
+    text = json.dumps(building_specification_json_schema())
+    for forbidden in ('"position"', '"boundary"', '"outline"', '"elements"', '"level_id"'):
+        assert forbidden not in text
 
 
 def test_schema_covers_every_element_type() -> None:

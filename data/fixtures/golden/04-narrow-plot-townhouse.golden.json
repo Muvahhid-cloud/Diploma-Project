@@ -1,0 +1,104 @@
+{
+  "engine_version": "layout@1.0.0",
+  "seed": 0,
+  "footprint_m": [
+    6.8,
+    11.75
+  ],
+  "summary": {
+    "storeys": 2,
+    "gross_floor_area_m2": 159.8,
+    "net_floor_area_m2": 112.6,
+    "rooms": 7,
+    "bedrooms": 3,
+    "bathrooms": 1,
+    "wcs": 1,
+    "garage": false,
+    "balconies": 0,
+    "terraces": 0,
+    "walls": 19,
+    "doors": 9,
+    "windows": 16,
+    "elements": 79
+  },
+  "element_counts": {
+    "door": 9,
+    "furniture": 20,
+    "railing": 1,
+    "roof": 1,
+    "room": 10,
+    "slab": 2,
+    "stair": 1,
+    "wall": 19,
+    "window": 16
+  },
+  "rooms": [
+    {
+      "level": 0,
+      "key": "room:corridor_0",
+      "type": "corridor",
+      "area_m2": 8.16
+    },
+    {
+      "level": 0,
+      "key": "room:hall_0",
+      "type": "entrance",
+      "area_m2": 20.83
+    },
+    {
+      "level": 0,
+      "key": "room:kitchen_living",
+      "type": "open_kitchen_living",
+      "area_m2": 35.17
+    },
+    {
+      "level": 0,
+      "key": "room:study",
+      "type": "study",
+      "area_m2": 12.49
+    },
+    {
+      "level": 0,
+      "key": "room:wc",
+      "type": "wc",
+      "area_m2": 3.25
+    },
+    {
+      "level": 1,
+      "key": "room:bathroom",
+      "type": "bathroom",
+      "area_m2": 8.08
+    },
+    {
+      "level": 1,
+      "key": "room:bedroom_1",
+      "type": "bedroom",
+      "area_m2": 19.21
+    },
+    {
+      "level": 1,
+      "key": "room:bedroom_2",
+      "type": "bedroom",
+      "area_m2": 19.21
+    },
+    {
+      "level": 1,
+      "key": "room:bedroom_3",
+      "type": "bedroom",
+      "area_m2": 15.19
+    },
+    {
+      "level": 1,
+      "key": "room:corridor_1",
+      "type": "corridor",
+      "area_m2": 12.32
+    }
+  ],
+  "warnings": [
+    "LAYOUT_AREA_DEVIATION",
+    "LAYOUT_AREA_DEVIATION",
+    "LAYOUT_AREA_DEVIATION",
+    "LAYOUT_AREA_DEVIATION"
+  ],
+  "model_sha256": "502789a7f9fe1def12bc5295f0340c7a3f66b0981f4968e7e568bd1ddd611749"
+}

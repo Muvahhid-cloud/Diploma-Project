@@ -78,7 +78,9 @@ async def _clean_tables() -> AsyncIterator[None]:
     from app.core.db import get_engine
 
     async with get_engine().begin() as conn:
-        await conn.execute(text("TRUNCATE users, refresh_tokens, projects CASCADE"))
+        await conn.execute(
+            text("TRUNCATE users, refresh_tokens, projects, project_versions, jobs CASCADE")
+        )
 
 
 @pytest.fixture

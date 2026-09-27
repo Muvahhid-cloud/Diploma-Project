@@ -1,6 +1,8 @@
 # Database
 
-Status: **Accepted (v0.2)** · PostgreSQL 16 · SQLAlchemy 2.x (typed, async via `asyncpg`) · Alembic
+Status: **Accepted (v0.3)** · PostgreSQL 16 · SQLAlchemy 2.x (typed, async via `asyncpg`) · Alembic
+
+Implemented tables (Alembic `0001`, `0002`): `users`, `refresh_tokens`, `projects`, `project_versions`, `jobs`. The rest of this document is the target design; sections say where the implementation differs.
 
 ## 1. Principles
 
@@ -59,34 +61,39 @@ materials (library, seeded)
 ### project_members
 | project_id | user_id | role (`owner`/`editor`/`viewer`) | PK(project_id, user_id) |
 
-### project_versions  ★
+### project_versions  ★ (implemented, `0002`)
 | column | type | notes |
 |---|---|---|
 | id | uuid PK | |
-| project_id | uuid FK | index |
-| parent_version_id | uuid FK self null | tree → branching options |
+| project_id | uuid FK projects (cascade) | index; + index (project_id, created_at) |
+| parent_version_id | uuid FK self null (set null) | the project's head when the version was created |
 | number | int | per-project sequence (v1, v2…), unique(project_id, number) |
-| label | text | "Option B – bigger kitchen" |
-| created_by | uuid FK users | |
-| source | text | `generation` / `modification` / `manual` / `restore` |
-| prompt | text null | NL input that led here |
-| spec | jsonb | BuildingSpecification snapshot |
+| label | varchar(200) | "Modern family house (seed 0)" |
+| created_by | uuid FK users null (set null) | |
+| source | varchar(32) | `generation` / `fixture` (Phase 2); `modification` / `manual` / `restore` later |
+| prompt | text null | NL input that led here (Phase 3) |
+| spec | jsonb null | BuildingSpecification snapshot (null for fixtures) |
 | model | jsonb | BuildingModel snapshot |
-| operations | jsonb | ops applied relative to parent (empty for generation) |
-| schema_version | text | |
-| engine_version | text | |
-| model_hash | text | sha256 of canonical model JSON (dedupe, cache keys) |
-| summary | jsonb | cheap stats for lists: GFA, rooms, bedrooms, total cost, currency |
+| operations | jsonb, default `[]` | ops applied relative to parent (empty for generation) |
+| schema_version | varchar(16) | model schema version |
+| engine_version | varchar(64) | `layout@1.0.0`, `fixture@1` |
+| rules_profile | varchar(80) | `generic-residential@1` — the profile that validated it (findings are re-evaluated against it on read) |
+| seed | int null | layout seed (reproducibility: spec + seed + engine + profile ⇒ same model) |
+| model_hash | varchar(64) | sha256 of the canonical model JSON (dedupe, cache keys) |
+| summary | jsonb | `ModelSummary`: storeys, GFA, net area, rooms, bedrooms, bathrooms, WCs, garage, balconies, terraces, element counts (cost fields in Phase 4) |
+| report | jsonb null | generation report: warnings (deviations from the spec, spec warnings, rules findings at generation time), notes, engine metrics |
 | created_at | timestamptz | |
 
-No `updated_at` — immutable. `spec`/`model` are large; list queries select only `summary`.
+No `updated_at` — immutable. `spec`/`model` are large; list queries defer them and return `summary` only. The full-version endpoint recomputes the summary from the model (derived data) and evaluates rules findings on read.
 
 ### drafts
 Per (project, user) uncommitted working state.
 | id | project_id | user_id | base_version_id | model jsonb | spec jsonb | operations jsonb (+ inverse stack) | updated_at | unique(project_id, user_id) |
 
-### jobs
-| id | project_id | user_id | kind (`generate`/`modify_plan`/`analyze`/`report`) | status (`queued`/`running`/`succeeded`/`failed`/`cancelled`) | progress real | stage text | input jsonb | result jsonb | error jsonb | created_at, started_at, finished_at |
+### jobs (implemented, `0002`)
+| id | project_id (cascade, index; + (project_id, created_at)) | user_id (cascade) | kind (`generate`; later `modify_plan`/`analyze`/`report`) | status (`queued`/`running`/`succeeded`/`failed`) | stage varchar (`queued` → `layout` → `checking` → `saving` → `done`) | progress float (completed stages / total — no invented percentages) | input jsonb (spec, seed, label, spec warnings) | result jsonb (version id/number, summary) | error jsonb (`{code, message, details}`) | created_at, started_at, finished_at |
+
+At most one active (`queued`/`running`) generation per project (409 `GENERATION_IN_PROGRESS`). Jobs run in-process (ADR-010); on startup jobs left active by a previous process are marked failed (`JOB_INTERRUPTED`).
 
 ### ai_runs
 | id | job_id null | project_id | user_id | task | provider | model | prompt_version | input jsonb (redacted) | raw_output text | parsed_output jsonb | issues jsonb | repair_count int | input_tokens, output_tokens int | latency_ms int | cost_usd numeric(10,5) | status | created_at |
@@ -113,8 +120,8 @@ Catalogs are **immutable once used**; edits create a new catalog version so hist
 analyses: `id, version_id, ai_run_id, findings jsonb, summary_markdown, created_at`
 reports: `id, version_id, kind, status, storage_path, created_at`
 
-### rules_profiles
-Seeded from `data/rules-profiles/*.yaml`. `id text` (`generic-residential`), `version int`, `name`, `extends text null`, `region_code null`, `rules jsonb`, `is_active`, `created_at`; PK(id, version). Immutable once referenced; changes create a new version. `project_versions` records `rules_profile` (`id@version`) used for validation.
+### rules_profiles (deferred)
+Not implemented in Phase 2: profiles are read (and cached) from `data/rules-profiles/<id>.v<version>.yaml`, which are immutable once used; versions store the `id@version` they were validated with. The table below is added when profiles become user-editable. Planned: seeded from `data/rules-profiles/*.yaml`. `id text` (`generic-residential`), `version int`, `name`, `extends text null`, `region_code null`, `rules jsonb`, `is_active`, `created_at`; PK(id, version). Immutable once referenced; changes create a new version. `project_versions` records `rules_profile` (`id@version`) used for validation.
 
 ### materials
 Seeded from `data/materials/*.yaml` (read-only in v1): `id text PK, name, category, render jsonb, unit, waste_factor, item_code`.

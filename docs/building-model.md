@@ -1,6 +1,6 @@
 # Building Model
 
-Status: **Implemented for Phase 1 (v0.3)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
+Status: **Implemented for Phase 2 (v0.4)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
 
 There are **two** schemas, deliberately separated:
 
@@ -25,7 +25,7 @@ After first generation, the **model** is the source of truth. The spec is kept a
 | Coordinate system | Right-handed, **Z-up**. Plan in X (east) / Y (north). Z = elevation above level 0 finished floor |
 | Origin | Building origin at south-west corner of ground floor footprint |
 | Precision | Geometry rounded to **1 mm** (3 decimals) on serialization; comparisons use `EPS = 1e-4` |
-| IDs | UUIDv4 strings. Stable across regenerations where semantically the same object (see §7) |
+| IDs | UUID strings: uuid5 of the semantic key for generated/fixture elements, stable across regenerations where semantically the same object (see §7); uuid4 for rows created by the app |
 | Enums | `snake_case` strings |
 | Schema version | Semver string on every root document: `"schema_version": "1.0.0"` |
 
@@ -35,82 +35,71 @@ Three.js conversion (Y-up) happens in exactly one place: the viewer root group (
 
 ## 2. BuildingSpecification (intent)
 
+Implemented in `apps/api/app/modules/building/specification.py` (schema_version **1.0.0**). JSON Schema (validation shape: defaulted fields optional), TS types and a Zod validator are generated into `packages/schema` (`pnpm schema`). The spec contains **no geometry**: no coordinates, walls, element ids or levels' positions — unknown fields are rejected (`extra="forbid"`), vocabularies are closed enums. Reference specs: `data/fixtures/specs/*.spec.json`.
+
 ```jsonc
 {
   "schema_version": "1.0.0",
-  "building_type": "single_family_house",          // enum; residential only in v1
-  "name": "Modern two-story house",
+  "building_type": "single_family_house",
+  "name": "Modern family house",
+  "description": "…",
   "targets": {
-    "gross_floor_area_m2": 280,
-    "storeys": 2,
-    "floor_to_floor_height_m": 3.0,                 // default 3.0
-    "max_footprint_m": { "width": null, "depth": null }
+    "gross_floor_area_m2": 280,        // on wall centerlines, all storeys, garage/balconies/terraces excluded; null = derived
+    "storeys": 2,                      // 1..3 (v1 scope)
+    "floor_to_floor_height_m": 3.0,    // 2.4..4.0, default 3.0
+    "max_footprint_width_m": null, "max_footprint_depth_m": null
   },
-  "site": {
-    "plot_width_m": null, "plot_depth_m": null,
-    "north_angle_rad": 0,
-    "setbacks_m": { "front": null, "rear": null, "side": null },
-    "street_side": "south"
+  "site": {                            // optional; the street is on the model's south side (-y)
+    "plot_width_m": 20, "plot_depth_m": 30,
+    "setback_front_m": 5, "setback_rear_m": 6, "setback_side_m": 1.5, "region_code": "KZ-ALA"
   },
   "style": {
-    "architectural_style": "modern_minimalist",     // enum
-    "roof": { "type": "flat", "pitch_deg": null },  // flat | gable | hip | shed
-    "facade_materials": ["white_render", "timber_cladding"],   // material library ids
-    "window_style": "panoramic",                    // standard | large | panoramic
-    "interior_finish_level": "standard"             // economy | standard | premium
+    "architectural_style": "modern",   // modern|minimalist|contemporary|classic|traditional|scandinavian|industrial|mediterranean|luxury
+    "interior_style": "minimalist",    // optional
+    "roof": { "type": "flat", "pitch_deg": null },   // flat|gable|hip; pitch 5..45 (null = engine default 25°)
+    "window_style": "large",           // standard|large|panoramic
+    "facade_material": "render",       // render|brick|concrete|timber (mapped to material-library ids)
+    "interior_finish_level": "standard"   // economy|standard|premium
   },
-  "rooms": [
-    {
-      "key": "bedroom_master",                      // stable semantic key (used for ID stability)
-      "type": "bedroom",                            // enum (see §2.1)
-      "count": 1,
-      "target_area_m2": 20, "min_area_m2": 14,
-      "level": 1,                                   // preferred storey index, null = any
-      "features": ["en_suite", "walk_in_closet"],
-      "adjacent_to": ["bathroom_master"],
-      "exterior_access": false
-    },
-    { "key": "kitchen_living", "type": "open_kitchen_living", "count": 1, "target_area_m2": 60, "level": 0,
-      "features": ["kitchen_island"], "exterior_access": true }
-    // ...
+  "rooms": [                           // 1..40 requirements; keys unique
+    { "key": "living", "type": "living", "name": "Living room", "target_area_m2": 45, "level": 0,
+      "open_to": ["kitchen"] },        // open plan: no wall where they meet (or open onto the corridor between them)
+    { "key": "kitchen", "type": "kitchen", "target_area_m2": 20, "adjacent_to": ["dining"] },
+    { "key": "master_bedroom", "type": "bedroom", "target_area_m2": 22, "level": 1,
+      "features": ["en_suite"] },      // en_suite | walk_in_closet: rooms reached through this bedroom
+    { "key": "bedroom", "type": "bedroom", "count": 3, "min_area_m2": 12 }
   ],
   "features": {
-    "garage": { "cars": 2, "attached": true },
-    "balconies": [{ "level": 1, "attached_to": "bedroom_master", "depth_m": 1.8 }],
-    "terrace": null,
-    "basement": false,
-    "stairs": { "type": "straight" }                // straight | l_shaped | u_shaped
+    "garage": { "cars": 2 },           // 1..3, attached at the ground floor
+    "balconies": [{ "level": 1, "attached_to": "master_bedroom", "side": "garden", "width_m": null, "depth_m": 1.5 }],
+    "terrace": { "attached_to": "living", "width_m": null, "depth_m": 3.0 }   // ground floor, garden side
   },
-  "services": {
-    "heating": "heat_pump",                         // gas_boiler | heat_pump | electric
-    "cooling": "split_ac",                          // none | split_ac | ducted
-    "ventilation": "natural",                       // natural | mvhr
-    "hot_water": "cylinder"
-  },
-  "assumptions": [                                  // everything the AI inferred, shown to user
-    { "path": "/targets/floor_to_floor_height_m", "value": 3.0, "reason": "Not specified; residential default." }
-  ],
-  "open_questions": [                               // ambiguities the AI could not resolve
-    "Should the garage connect directly to the house interior?"
-  ]
+  "budget": { "amount": "300000000.00", "currency": "KZT" },   // Decimal as string; a constraint only (nothing is costed in Phase 2)
+  "assumptions": [{ "path": "/targets/floor_to_floor_height_m", "value": 3.0, "reason": "Not specified; residential default." }],
+  "open_questions": ["Should the garage connect directly to the house interior?"]
 }
 ```
 
+Semantics:
+
+- `level` is a 0-based storey index (0 = ground floor); `null` lets the engine choose.
+- `count` expands one requirement into instances `bedroom_1`, `bedroom_2`, … (the instance key is the room's semantic key suffix, `room:bedroom_2`).
+- Areas are per room, on wall centerlines. Rooms without `target_area_m2` get engine defaults (layout `LayoutConfig.default_areas`), scaled to fill the requested floor area (service rooms by at most ±30 %, living spaces and bedrooms up to 2×).
+- `assumptions` / `open_questions` are carried for the AI interpreter (Phase 3) and shown to the user.
+
 ### 2.1 Room types (v1)
 
-`bedroom, bathroom, wc, en_suite, kitchen, living, dining, open_kitchen_living, study, laundry, utility, storage, walk_in_closet, hall, corridor, entrance, staircase, garage, plant_room`
-
-Each type has defaults in `building/defaults.py` (min area, min width, needs window, wet room, privacy zone, typical finish).
+A spec may request: `bedroom, bathroom, wc, kitchen, living, dining, open_kitchen_living, study, laundry, utility, storage, plant_room` (+ `en_suite`, `walk_in_closet` via bedroom `features`). The engine adds circulation (`entrance` hall, `corridor`, `staircase`/landing), `garage`, `balcony` and `terrace` rooms from `features`. `hall` exists in the model vocabulary but is not generated yet.
 
 ### 2.2 Spec validation (three tiers)
 
 | Tier | Where | Examples | Result |
 |---|---|---|---|
-| 1. Structural | Pydantic | types, enums, ranges (`0 < storeys ≤ 3`), required fields | hard error |
-| 2. Semantic | `building/validation/spec_rules.py` | Σ room target areas ≤ 0.85 × GFA (circulation/walls allowance); ≥1 bathroom; garage on level 0; balcony level < storeys; `adjacent_to` keys exist; bedrooms need exterior wall | error or warning |
-| 3. Feasibility | layout engine | footprint fits plot/setbacks; rooms fit minimum widths | error with suggestion |
+| 1. Structural | Pydantic (`specification.py`); the web form runs the generated Zod validator first | types, enums, ranges (`1 ≤ storeys ≤ 3`), unique room keys, no unknown fields | 422 `VALIDATION_ERROR` with JSON-pointer paths |
+| 2. Semantic | `rules/spec_checks.py` against the project's `BuildingRulesProfile` | target area ≥ rule minimum; Σ room minimums ≤ 0.85 × GFA; ≥ 1 bathroom (or en-suite); `level` < storeys; `adjacent_to`/`open_to`/`attached_to` keys exist; open plan only between living/dining/kitchen/study; features only on bedrooms; clear height ≥ `ceiling.min_clear_height_m`; storey height ≤ one straight flight; balconies need an upper floor; plot/setbacks leave enough buildable area | errors block generation (422 `SPEC_INVALID`); warnings (no kitchen, no bedroom, feature on a service room) are shown |
+| 3. Feasibility | layout engine | stair fits the street-side band; rooms fit their bands at minimum widths; footprint fits the plot/max footprint; every room reachable | job fails with `LAYOUT_INFEASIBLE` and reasons |
 
-Every issue: `{ severity, code, path (JSON pointer), message, suggestion? }`. Errors are fed back to the AI for repair (see [ai-pipeline.md](ai-pipeline.md)).
+Every issue has the same shape (`building/issues.py`): `{ severity, code, path (JSON pointer), message, suggestion?, rule_ref?, element_id? }`. `rule_ref` is e.g. `generic-residential@1:rooms.bedroom.min_area_m2`.
 
 ---
 
@@ -124,15 +113,15 @@ Implemented in `apps/api/app/modules/building/{primitives,enums,elements,model}.
   "id": "uuid",                       // the "building" object id
   "building": { "name": "Demo family house", "building_type": "single_family_house", "description": "…" },
   "units": "m",
-  "engine_version": "fixture@1",      // layout@x.y.z once generated (Phase 2)
-  "seed": null,                       // layout seed (Phase 2)
+  "engine_version": "layout@1.0.0",   // "fixture@1" for the hand-authored demo
+  "seed": 0,                          // layout seed (null for fixtures)
   "levels": [ Level, ... ],           // the "floor" objects
   "elements": [ Element, ... ],       // discriminated union on "type"
-  "metadata": { "source": "fixture" | "layout" | "operations", "generator": "…" }
+  "metadata": { "source": "fixture" | "layout" | "operations", "generator": "layout@1.0.0 · rules generic-residential@1" }
 }
 ```
 
-`spec_hash` and `systems` (MEP) are added as minor schema versions in Phases 2 and 6.
+The spec a model was generated from is stored next to it in the project version (not inside the model). `systems` (MEP) is added as a minor schema version in Phase 6.
 
 ### 3.1 Level ("floor")
 
@@ -215,9 +204,11 @@ Errors (model rejected):
 8. Stairs: `risers × riser_height ≈ rise_total` and `(risers − 1) × tread_depth ≈ run_length` (±0.5 mm rounding per riser); start on `from_level`, reach the next level; `rise_total` = level difference.
 9. Railings no steeper than 45°. Pydantic: all dimensions finite and > 0 (area/overhang ≥ 0).
 
-Warnings (reported, model accepted): room not fully supported by a slab; habitable room (living, dining, kitchen, bedroom, study) without a window or glazed door on its own boundary; furniture outside every room.
+Warnings (reported, model accepted): room not fully supported by a slab; habitable room (living, dining, kitchen, bedroom, study) without a window or glazed door on its own boundary; furniture outside every room; **room not reachable from the entrance** (`ROOM_UNREACHABLE`: graph over doors — `connects` computed geometrically —, open boundaries where no wall axis runs along a shared room edge for ≥ 0.6 m, and stairs linking the room at the bottom to the room at the top landing; start = rooms with an `entrance` door, else any exterior door); no exterior door at all (`NO_ENTRANCE`).
 
-Planned (Phase 2, with Hypothesis properties over generated models): reachability of every room from the entrance, stair headroom, wet-room fixture placement.
+The layout engine rejects its own candidates on any error **or** `ROOM_UNREACHABLE`, so generated models always satisfy them; Hypothesis properties over random specs check this (`tests/layout/test_invariants.py`). Not yet checked: stair headroom, wet-room fixture placement.
+
+Rules findings (conceptual, per rules profile) are a separate evaluator, `rules/model_checks.py` (§10); they are warnings with a `rule_ref` and never invalidate a model.
 
 ---
 
@@ -264,7 +255,9 @@ Required presets: concrete, brick, glass, wood, roof, floor, interior_wall, exte
 
 ## 7. ID stability across regeneration
 
-Each generated element gets a `semantic_key` (e.g. `room:bedroom_master:0`, `wall:ext:L1:N:2`, `window:room:bedroom_master:N:0`). On regeneration the engine looks up the previous model's `semantic_key → id` map and reuses IDs. This keeps selection, locks, comments and diffs meaningful.
+Each generated element gets a `semantic_key` derived from what it *is*, not where it is: `level:L1`, `room:master_bedroom`, `room:bedroom_2`, `room:corridor_1`, `room:hall_0`, `wall:ext:L1:N`, `wall:garage:S`, `wall:L1:bedroom_2|corridor_1` (interior walls: the two regions of their longest stretch), `door:front`, `door:bedroom_2`, `window:bedroom_2:S:0`, `slab:L1`, `stair:flight_0`, `roof:main`, `furniture:bedroom_2:bed:1`.
+
+Element ids are `uuid5(id_namespace, semantic_key)`. The generation service uses the **project id** as the namespace, so regenerating the same kind of element in a project yields the same id, while two projects never share ids. `generate_layout(..., previous_ids={semantic_key: id})` additionally reuses the ids of an existing model (e.g. a hand-authored fixture) for matching keys — the hook Phase 5 regeneration with locks will build on.
 
 ---
 
@@ -286,10 +279,12 @@ Dimensional rules are **data, not code**. The layout engine and validators read 
 
 > Rules profiles support **conceptual validation only**. They are not a statement of compliance with any building code, including Kazakhstan's (SN/SP RK). BuildAI 3D does not replace licensed architectural, structural, MEP or regulatory review.
 
-- Code: `apps/api/app/modules/rules/` (pure domain module; Pydantic schema + evaluator).
-- Data: `data/rules-profiles/*.yaml`, seeded into the DB (`rules_profiles` table); immutable once used by a version.
-- Each project has a `rules_profile_id` (default `generic-residential@1`). Each version records which profile + version validated it.
+- Code: `apps/api/app/modules/rules/` (pure domain module): `profile.py` (Pydantic schema), `loader.py` (YAML files, `extends` resolved by deep merge), `spec_checks.py` (tier-2 spec validation, §2.2), `model_checks.py` (evaluation of any BuildingModel).
+- Data: `data/rules-profiles/<id>.v<version>.yaml` (YAML: human-edited, commented data; PyYAML). Profiles are read from files and cached per process; the `rules_profiles` DB table is deferred until profiles become user-editable. A file is **immutable once used** — changes go into a new version file.
+- Each project has a `rules_profile_id` (default `generic-residential@1`). Each version records the profile (`project_versions.rules_profile`) that validated it; rules findings are re-evaluated on read against that exact profile.
 - Regional profiles (e.g. `kz-residential`) are added later as new YAML files that `extends` the generic profile and override values.
+
+`model_checks` evaluates: room area and clear width per room type (clear width = the largest short side of an axis-aligned rectangle inside the room, i.e. the main part of an L-shaped room), corridor width, clear ceiling height (habitable vs service), glazing-to-floor ratio of rooms with `requires_window` (windows + glazed sliding doors on the room's boundary), door width/height by kind (entrance, interior, wet room, garage per car), window size, upper-floor sills below the guard height, stair riser/tread/2R+T/risers per flight/width, railing heights (balcony vs other). Not evaluated yet: headroom, accessibility (profile data present, `enabled: false`).
 
 ```yaml
 id: generic-residential
@@ -299,16 +294,21 @@ extends: null
 disclaimer: Conceptual rules only. Not a building-code compliance check.
 units: m
 rooms:                      # per room type; unspecified types fall back to "default"
-  default:      { min_area_m2: 4.0,  min_width_m: 1.5 }
-  bedroom:      { min_area_m2: 9.0,  min_width_m: 2.7, requires_window: true }
-  bedroom_master: { min_area_m2: 12.0, min_width_m: 3.0, requires_window: true }
-  living:       { min_area_m2: 16.0, min_width_m: 3.6, requires_window: true }
-  kitchen:      { min_area_m2: 6.0,  min_width_m: 2.2, requires_window: true }
+  default:             { min_area_m2: 4.0,  min_width_m: 1.5 }
+  bedroom:             { min_area_m2: 9.0,  min_width_m: 2.7, requires_window: true }
+  living:              { min_area_m2: 16.0, min_width_m: 3.6, requires_window: true }
+  dining:              { min_area_m2: 8.0,  min_width_m: 2.7, requires_window: true }
+  kitchen:             { min_area_m2: 6.0,  min_width_m: 2.2, requires_window: true }
   open_kitchen_living: { min_area_m2: 25.0, min_width_m: 4.0, requires_window: true }
-  bathroom:     { min_area_m2: 3.5,  min_width_m: 1.6 }
-  wc:           { min_area_m2: 1.2,  min_width_m: 0.9 }
-  corridor:     { min_area_m2: 0.0,  min_width_m: 1.0 }
-  garage:       { min_area_m2: 18.0, min_width_m: 3.0, per_car_area_m2: 18.0 }
+  study:               { min_area_m2: 6.0,  min_width_m: 2.2, requires_window: true }
+  bathroom:            { min_area_m2: 3.5,  min_width_m: 1.6 }
+  en_suite:            { min_area_m2: 3.0,  min_width_m: 1.5 }
+  wc:                  { min_area_m2: 1.2,  min_width_m: 0.9 }
+  # … laundry, utility, storage, walk_in_closet, plant_room, entrance, hall, staircase
+  corridor:            { min_area_m2: 0.0,  min_width_m: 1.0 }
+  garage:              { min_area_m2: 18.0, min_width_m: 3.0, per_car_area_m2: 18.0 }
+  balcony:             { min_area_m2: 1.5,  min_width_m: 0.9 }
+  terrace:             { min_area_m2: 3.0,  min_width_m: 1.5 }
 ceiling:
   min_clear_height_m: 2.5           # habitable rooms
   min_clear_height_service_m: 2.2   # storage, garage, wc, corridor
@@ -344,4 +344,4 @@ accessibility:                       # basic geometry checks, reported as warnin
   enabled: false
 ```
 
-Rule evaluation output uses the standard issue shape `{ severity, code, path, message, rule_ref }` where `rule_ref` = `generic-residential@1:stairs.riser_m` so every warning is traceable to the exact rule.
+Rule evaluation output uses the standard issue shape `{ severity, code, path, message, rule_ref, element_id }` where `rule_ref` = `generic-residential@1:stairs.riser_m` so every warning is traceable to the exact rule. (The originally sketched `bedroom_master` entry was dropped: the model has no "master" room type, so it could not be applied reliably.)

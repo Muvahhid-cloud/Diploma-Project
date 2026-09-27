@@ -1,0 +1,115 @@
+{
+  "engine_version": "layout@1.0.0",
+  "seed": 0,
+  "footprint_m": [
+    14.75,
+    10.15
+  ],
+  "summary": {
+    "storeys": 1,
+    "gross_floor_area_m2": 149.7,
+    "net_floor_area_m2": 122.1,
+    "rooms": 9,
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "wcs": 0,
+    "garage": true,
+    "balconies": 0,
+    "terraces": 1,
+    "walls": 18,
+    "doors": 13,
+    "windows": 11,
+    "elements": 91
+  },
+  "element_counts": {
+    "door": 13,
+    "furniture": 32,
+    "roof": 2,
+    "room": 13,
+    "slab": 2,
+    "wall": 18,
+    "window": 11
+  },
+  "rooms": [
+    {
+      "level": 0,
+      "key": "room:bathroom",
+      "type": "bathroom",
+      "area_m2": 7.88
+    },
+    {
+      "level": 0,
+      "key": "room:bedroom_1",
+      "type": "bedroom",
+      "area_m2": 12.6
+    },
+    {
+      "level": 0,
+      "key": "room:bedroom_2",
+      "type": "bedroom",
+      "area_m2": 12.6
+    },
+    {
+      "level": 0,
+      "key": "room:corridor_0",
+      "type": "corridor",
+      "area_m2": 17.7
+    },
+    {
+      "level": 0,
+      "key": "room:dining",
+      "type": "dining",
+      "area_m2": 14.24
+    },
+    {
+      "level": 0,
+      "key": "room:garage",
+      "type": "garage",
+      "area_m2": 21.0
+    },
+    {
+      "level": 0,
+      "key": "room:hall_0",
+      "type": "entrance",
+      "area_m2": 9.9
+    },
+    {
+      "level": 0,
+      "key": "room:kitchen",
+      "type": "kitchen",
+      "area_m2": 14.18
+    },
+    {
+      "level": 0,
+      "key": "room:laundry",
+      "type": "laundry",
+      "area_m2": 6.51
+    },
+    {
+      "level": 0,
+      "key": "room:living",
+      "type": "living",
+      "area_m2": 30.71
+    },
+    {
+      "level": 0,
+      "key": "room:master_bedroom",
+      "type": "bedroom",
+      "area_m2": 16.65
+    },
+    {
+      "level": 0,
+      "key": "room:master_bedroom_en_suite",
+      "type": "en_suite",
+      "area_m2": 6.75
+    },
+    {
+      "level": 0,
+      "key": "room:terrace",
+      "type": "terrace",
+      "area_m2": 24.15
+    }
+  ],
+  "warnings": [],
+  "model_sha256": "053712de287a9e63cf59cd0cbf953a875a1cbad878ac15be2efcdf489fa1ffac"
+}

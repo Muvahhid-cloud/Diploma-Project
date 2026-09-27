@@ -63,20 +63,43 @@ Delivered:
 
 Known limitations: see [3d-engine.md §15](3d-engine.md). Deferred from the original Phase 1 plan: `BuildingSpecification` Pydantic schema (moved to Phase 2, where it is first used) and storing the fixture as a project version (moved to Phase 2 together with the `project_versions` table).
 
-## Phase 2 — Layout engine (spec → model) ☐
-Goal: deterministic geometry from a spec.
+## Phase 2 — Layout engine (spec → model) ☑
+Goal: deterministic geometry from a spec. **Done 2026-09-28.**
 
-- `BuildingSpecification` Pydantic schema + spec validation (tiers 1–2) and `BuildingRulesProfile` (`generic-residential@1`)
-- `project_versions` table; store generated models (and the demo fixture) as project versions; project editor renders its current version with the Phase 1 viewer
-- Program expansion, footprint, stair core, zoning, subdivision, circulation, walls, openings, slabs, roof
-- Candidate search + scoring; seeded determinism; stable semantic IDs
-- Hypothesis invariant tests; golden-file tests for 10 reference specs
-- Spec form in UI (manual spec entry) → generate → render
-- Jobs table + polling
-- **Exit**: 10 reference specs (incl. the 280 m² 2-storey 4-bed example) produce valid, plausible houses
+Delivered:
+
+- `BuildingSpecification` 1.0.0 (Pydantic, closed vocabularies, no geometry) → generated JSON Schema, TS types and Zod validator (`pnpm schema`); tier-2 spec checks against the rules profile (`rules/spec_checks.py`)
+- `BuildingRulesProfile` schema + YAML loader with `extends` (`data/rules-profiles/generic-residential.v1.yaml`) and a model evaluator (`rules/model_checks.py`) whose findings carry `rule_ref`s
+- Layout engine `layout@1.0.0` (`modules/layout`): program → levels → skeletons (footprint, bands, stair core) → seeded zoning/subdivision variants → scoring → regions → walls/openings/slabs/stairs/railings/roofs/furniture → validation; stable semantic ids (uuid5 per project namespace); deviations and notes reported (docs/3d-engine.md §16)
+- Model validator: reachability of every room from the entrance (doors, open boundaries, stairs)
+- `project_versions` + `jobs` tables (Alembic `0002`); generation job (validate → layout in a worker thread → rules findings → new immutable version); demo fixture importable as a version; `ModelSummary`
+- API: `POST /projects/{id}/spec/validate`, `POST /projects/{id}/generate` (202 job), `GET /jobs/{id}`, `GET /projects/{id}/versions[/{vid}]`, `POST /projects/{id}/versions/demo`
+- Web: project editor renders the current version with the Phase 1 viewer; version selector; "New design" drawer with the spec form (reference presets, rooms, style, garage/balcony/terrace, seed, plot) → real job stages → opens the new version; generation banner; design report (deviations, notes, rules findings with element links, disclaimer)
+- 10 reference specs (`data/fixtures/specs`) with golden files (`pnpm golden`); `data/fixtures/generated-house.model.json` rendered by the web engine tests
+
+**Completion checklist** (verified 2026-09-28):
+
+| Criterion | Result |
+|---|---|
+| Spec schema + tier-1/2 validation | ☑ Pydantic + rules checks; errors carry JSON pointers, suggestions, `rule_ref`s |
+| Rules profile `generic-residential@1` | ☑ YAML data; engine and evaluators read every minimum from it |
+| Deterministic layout, seeded | ☑ same spec + seed ⇒ identical model JSON (also across `PYTHONHASHSEED`s) |
+| Stable semantic ids | ☑ uuid5(project, semantic key); `previous_ids` reuse hook |
+| Hypothesis invariants | ☑ 40 random specs: no model errors, all rooms reachable, program present, rooms inside footprint, reproducible |
+| 10 reference specs incl. 280 m² 2-storey 4-bed | ☑ valid, reachable, no rules findings, program + GFA ± 3 %; golden files |
+| Versions + jobs + polling | ☑ immutable versions, one active job per project, interrupted jobs failed on startup |
+| Spec form → generate → render | ☑ verified in the browser (dev and production build): preset → generate → v1 opens; floors, selection/properties, report; 3-storey villa as v2; version switching |
+| Tests / lint / typecheck / build | ☑ API 190 tests, web 110 tests; ruff, ruff format, import-linter (2 contracts), mypy strict, ESLint, tsc clean; `next build` OK |
+
+Deferred / changed from the original plan:
+
+- `rules_profiles` DB table → profiles stay versioned files until they become user-editable (docs/database.md)
+- "Slicing-tree / squarified treemap" subdivision → a double-loaded-corridor band scheme with tucked service rooms: always reachable, always daylit, simpler to validate; richer plan types later
+- Wet-stack zoning around the core, stair headroom checks, accessibility checks: not yet
+- Version compare / restore: Phase 5 as planned
 
 ## Phase 3 — AI interpretation ☐
-Goal: natural language → validated spec.
+Goal: natural language → validated spec. Builds on Phase 2: the AI only has to produce a `BuildingSpecification` (generated JSON Schema in `packages/schema`); validation (`/spec/validate`), generation jobs, versions and the viewer already exist.
 
 - AIProvider protocol, MockAIProvider, one real provider adapter (+ OpenAI-compatible)
 - Interpret pipeline with repair loop, assumptions, open questions
@@ -131,6 +154,11 @@ IFC export · GLB fixture catalog · multiple cost regions & user-editable catal
 | 4 | Phase order | 0 foundations → 1 hand-authored model → 3D → 2 spec → layout → 3 NL → AI. 3D pipeline must work without AI first |
 | 5 | Units | Metric only (input conversion supported later) |
 | 6 | Task runner | Root `package.json` scripts (Windows-friendly) + thin Makefile |
+| 7 | Rules profile storage (2026-09-28) | Versioned YAML files `data/rules-profiles/<id>.v<n>.yaml`, immutable once used, cached per process; versions record `id@version`. DB table only when profiles become user-editable |
+| 8 | Gross floor area definition (2026-09-28) | Measured on wall centerlines over all storeys; attached garage, balconies and terraces excluded |
+| 9 | Layout scheme v1 (2026-09-28) | Double-loaded corridor bands with the stair core in the street band and tucked service rooms (reachable + daylit by construction); other plan types later |
+| 10 | Generated element ids (2026-09-28) | `uuid5(project id, semantic key)`: stable across regenerations in a project, never shared between projects |
+| 11 | Requested area vs. room program (2026-09-28) | The requested gross floor area is delivered; rooms deviate instead, and every deviation > 15 % (and unmet adjacency) is reported — never silent |
 
 ## Open decisions
 

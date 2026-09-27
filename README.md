@@ -16,9 +16,11 @@ Initial market: **Kazakhstan (KZT)**. Costing is currency-agnostic.
 
 ## Status
 
-**Phase 1 complete — procedural 3D building engine.** Open the app at http://localhost:3000 to explore a hand-authored two-floor demo house that is generated entirely from its structured BuildingModel: walls with real door/window openings, rooms, slabs, stair, hip roof, balcony and furniture. Rotate/zoom/pan, camera presets, click any object to inspect its model properties, isolate floors, toggle layers, hide the roof or facades, or cut a section.
+**Phase 2 complete — deterministic layout engine (spec → model).** Sign up, create a project and fill in a building specification (or start from a reference preset: 280 m² family house, panoramic modern house, garden bungalow, three-storey villa). The layout engine plans the rooms, corridors, stair core, walls, doors, windows, slabs, roof, balconies, terraces, garage and furniture, validates the result and stores it as an immutable project version that opens in the 3D editor. Same spec + seed → same house. Every deviation from the request (room areas, adjacency) and every finding of the conceptual rules profile is listed in the version's design report.
 
-Next: **Phase 2** — BuildingSpecification → deterministic layout engine → BuildingModel. AI comes in Phase 3. See [docs/roadmap.md](docs/roadmap.md).
+The hand-authored Phase 1 demo house is still at http://localhost:3000 (no login) and can be imported into a project as a version.
+
+Next: **Phase 3** — natural language → AI → BuildingSpecification (the spec pipeline above is what the AI will feed). See [docs/roadmap.md](docs/roadmap.md).
 
 ## Prerequisites
 
@@ -60,8 +62,9 @@ Stop the embedded database with `pnpm db:local --stop`. You can instead point `D
 | `pnpm test` | Vitest (web), pytest (API, real PostgreSQL, includes migration checks) |
 | `pnpm check` | lint + typecheck + test |
 | `pnpm migrate` | `alembic upgrade head` |
-| `pnpm schema` | Regenerate `packages/schema` (JSON Schema + TS types) from the Pydantic BuildingModel |
+| `pnpm schema` | Regenerate `packages/schema` (JSON Schemas, TS types) from the Pydantic BuildingModel and BuildingSpecification |
 | `pnpm fixtures` | Regenerate the demo house fixture from its authoring script |
+| `pnpm golden` | Regenerate the layout-engine golden files for the 10 reference specs (+ the generated-house fixture) — only for deliberate engine changes |
 | `pnpm build:web` | Production Next.js build |
 | `pnpm docker:up` / `docker:down` | Compose stack |
 
@@ -71,9 +74,10 @@ API tests use `TEST_DATABASE_URL` if set (CI); otherwise they start an embedded 
 
 ```
 apps/web/        Next.js (App Router): editor UI, engine/ (pure-TS geometry), viewer/ (R3F)
-apps/api/        FastAPI modular monolith: auth, projects, building model + validation, demo endpoint
-packages/schema/ Contracts generated from Pydantic (JSON Schema, TS types, Zod validator)
-data/            Material library, demo fixture (later: cost catalogs, rules profiles)
+apps/api/        FastAPI modular monolith: auth, projects, versions, generation jobs,
+                 building model + spec + validation, rules profiles, layout engine
+packages/schema/ Contracts generated from Pydantic (JSON Schemas, TS types, Zod validators)
+data/            Material library, rules profiles, demo fixture, reference specs + golden files
 docs/            Architecture and design documents
 infra/docker/    Dockerfiles
 scripts/         Cross-platform helper scripts

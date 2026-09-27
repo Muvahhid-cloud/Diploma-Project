@@ -21,6 +21,8 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     region_code: Mapped[str] = mapped_column(String(16))
     currency: Mapped[str] = mapped_column(String(3))
     rules_profile_id: Mapped[str] = mapped_column(String(80))
-    # FK to project_versions is added when that table is introduced (Phase 1).
-    current_version_id: Mapped[uuid.UUID | None] = mapped_column()
+    # The version shown by default ("head"). use_alter: projects <-> project_versions is a cycle.
+    current_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("project_versions.id", ondelete="SET NULL", use_alter=True)
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

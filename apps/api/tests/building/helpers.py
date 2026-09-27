@@ -9,6 +9,10 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 DATA_DIR = REPO_ROOT / "data"
 FIXTURE_PATH = DATA_DIR / "fixtures" / "demo-house.model.json"
 SCHEMA_PATH = REPO_ROOT / "packages" / "schema" / "generated" / "building-model.schema.json"
+SPEC_SCHEMA_PATH = (
+    REPO_ROOT / "packages" / "schema" / "generated" / "building-specification.schema.json"
+)
+SPECS_DIR = DATA_DIR / "fixtures" / "specs"
 
 
 def material_ids() -> set[str]:

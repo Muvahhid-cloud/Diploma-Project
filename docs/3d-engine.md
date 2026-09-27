@@ -1,17 +1,17 @@
 # 3D Engine
 
-Status: **Implemented for Phase 1 (v0.3)** · Last updated: 2026-09-27
+Status: **Implemented for Phase 2 (v0.4)** · Last updated: 2026-09-28
 
 The "3D engine" is four parts with hard boundaries:
 
 | Part | Location | Input → Output | Status |
 |---|---|---|---|
-| **Layout engine** | Python `modules/layout` | Spec + RulesProfile + seed → BuildingModel | Phase 2 |
+| **Layout engine** | Python `modules/layout` | Spec + RulesProfile + seed → BuildingModel | ☑ Phase 2 (§16) |
 | **MEP generator** | Python `modules/mep` | Architectural model → model + MEP elements | Phase 6 |
 | **Geometry engine** | TS `apps/web/src/engine` | BuildingModel + EngineConfig → `SceneGraph` (render descriptors) | ☑ Phase 1 |
 | **Viewer** | TS `apps/web/src/viewer` (R3F) + `features/editor` | SceneGraph + view state → interactive scene | ☑ Phase 1 |
 
-Positions of everything are decided by the model (today: the hand-authored fixture; Phase 2: the layout engine). The browser only **tessellates** what the model states. There is no hidden render-only representation: every mesh is built from, and points back to, one BuildingModel element.
+Positions of everything are decided by the model (the layout engine for generated versions; the hand-authored demo fixture otherwise). Generated models go through the unchanged Phase 1 geometry engine and viewer. The browser only **tessellates** what the model states. There is no hidden render-only representation: every mesh is built from, and points back to, one BuildingModel element.
 
 ### Determinism contract
 
@@ -164,7 +164,7 @@ Rooms can also be selected from the room list in the left panel.
 
 ## 13. Performance
 
-Demo house (measured): 116 elements → 144 meshes, ~7k triangles; validate + index + build ≈ 22 ms in the production build, ≈ 90–120 ms in dev mode.
+Demo house (measured): 116 elements → 144 meshes, ~7k triangles; validate + index + build ≈ 22 ms in the production build, ≈ 90–120 ms in dev mode. Generated houses (Phase 2, dev mode): 280 m² family house 129 elements → 155 meshes, 13–50 ms; 360 m² three-storey villa 176 elements → 214 meshes, ~35 ms.
 
 | Technique | Status |
 |---|---|
@@ -183,7 +183,11 @@ Demo house (measured): 116 elements → 144 meshes, ~7k triangles; validate + in
 
 ```
 features/editor/components/
-  DemoEditor        loads GET /api/v1/demo/building-model → building store
+  DemoEditor        loads GET /api/v1/demo/building-model → building store (public, "/")
+  ProjectEditor     /projects/[id]: version selector, loads GET …/versions/{vid} → building store;
+                    "New design" drawer (features/generation: SpecForm → validate → generate job
+                    → progress by real job stage → opens the new version), design report drawer
+                    (features/versions/ReportPanel), start view for projects without versions
   BuildingEditor    layout: left panel | viewport | properties; toolbar under the viewport
                     (≥1024 px three columns; narrower screens stack viewport first)
   LeftPanel         project summary · floors (All / Floor 1 / Floor 2) · layers · inspection · rooms
@@ -224,24 +228,89 @@ stores/ (Zustand, one concern each)
 - `ResizeObserver`-driven canvas sizing: in environments that throttle rendering (hidden embedded browser panes) the canvas initialises on the first interaction; normal browser tabs are unaffected.
 - `THREE.Clock` deprecation warning comes from React Three Fiber internals.
 
-## 16. Layout engine (spec → model) — Phase 2
+## 16. Layout engine (spec → model) — ☑ Phase 2
 
-Scope v1: rectilinear plans, 1–3 storeys, one rectangular (or L-shaped with garage) footprint. All minimums come from the active `BuildingRulesProfile` ([building-model.md](building-model.md) §10).
+Code: `apps/api/app/modules/layout/` (pure domain module; no I/O, clock or global randomness). Entry point:
 
-```
-1. Program        – expand spec rooms into RoomRequests (target/min area, min width, zone, level)
-2. Footprint      – per-level net area → W×D (aspect 1.2–1.8, fit plot/setbacks); garage → L-annex
-3. Vertical core  – stair (+ wet stack zone) valid on all levels; stair geometry from rules
-4. Zoning         – public to street/garden, private away, service near core
-5. Subdivision    – slicing-tree / squarified treemap to hit target areas
-6. Circulation    – corridors (min width from rules) so the entrance reaches every room
-7. Walls          – from room boundary edges: shared → interior, perimeter → exterior (CCW)
-8. Openings       – doors along the adjacency graph; windows by room type/orientation/style
-9. Slabs & roof   – per level; stair voids; balcony slabs; roof per spec
-10. Score         – area error, aspect, adjacency, daylight, corridor area, wet-room clustering
+```python
+generate_layout(spec, rules_profile, *, id_namespace, seed=0, config=DEFAULT_CONFIG,
+                previous_ids=None, material_ids=None) -> LayoutResult(model, warnings, notes, metrics)
+# raises LayoutError(code="LAYOUT_INFEASIBLE" | "LAYOUT_INVALID", message, issues)
 ```
 
-The output must satisfy the same invariants as the fixture (`building/validation.py`) and render through the unchanged Phase 1 engine.
+Scope v1: rectilinear plans, 1–3 storeys, one rectangular house footprint stacked on every storey, plus an attached single-storey garage (L-shaped ground floor), cantilevered balconies and ground-floor terraces. Every minimum comes from the active `BuildingRulesProfile` ([building-model.md](building-model.md) §10); construction defaults (wall/slab thicknesses, preferred door/window sizes, default room areas, search parameters) live in `LayoutConfig` (`config.py`) and are versioned with `ENGINE_VERSION` (`layout@1.0.0`).
+
+### 16.1 Plan scheme
+
+Every storey is a **double-loaded corridor**: a street-side band (south, depth `Ds`), a corridor band (1.2 m) and a garden-side band (north). The **stair core** sits in the street band at the same x on all storeys; on the ground floor it is part of the **entrance hall** (open to the corridor), with the front door in the hall. Every room spans its band from the corridor to the facade, so it is reachable and gets a window — except small service rooms, which are **tucked** against the corridor inside a larger room's column; that room wraps around them on the facade side (L-/T-shaped rooms). En-suites and walk-in closets are tucked into (or placed next to) their bedroom and opened from it.
+
+```
+ y=D  +--------+-----------+--------------------+    garden (north): living, dining, kitchen /
+      |  ...   |  Living   |  Kitchen & dining  |    master bedroom (+ balcony / terrace door)
+      |        +---+       |                    |
+ Ds+C +--------+WC +-------+--------------------+
+      |               Corridor                  |
+ Ds   +-----+--+---------+--------+-------------+    street (south): hall + stair core,
+      | Hall|St|  Study  |Laundry | Bedroom ... |    service rooms, other rooms
+      |  ⌂  |ai|         |        |             |
+ y=0  +-----+rs+---------+--------+-------------+
+     x=0                                      x=W      garage annex at x<0 or x>W
+```
+
+Stair core: `lanes = storeys − 1`, one straight flight per lane (`design_stair`: risers = ⌈f2f / riser_max⌉, tread from the 2R+T comfort target, all within the rules). Flight 0 rises north and arrives at the corridor; for three storeys flight 1 rises south from the corridor in the second lane and arrives at a landing over the first flight (a switchback without a mid-landing). Upper floors get walled voids over arriving flights and slab holes cut to the inner wall faces. `Ds ≥ half exterior wall + landing_min_depth + run`.
+
+### 16.2 Pipeline
+
+```
+1. Program     program.py   spec rooms -> RoomRequests (instances, rule minimums, zones, attached suites);
+                            default target areas scaled to fill the requested area (service ±30 %)
+2. Levels      planner.py   fixed levels kept; bedrooms up, public rooms down, one bathroom per
+                            bedroom floor; greedy balancing of room area vs. level capacity
+3. Skeletons   planner.py   footprint W x D per aspect (0.5-1.8) at the requested area, street-band
+                            depth options around an even split, core position (5) x hall side (2),
+                            compact hall for small floors; plot / max-footprint limits
+4. Zoning      planner.py   per level and seeded variant: rooms (with tucked service rooms) assigned
+                            to bands by fill ratio + zoning penalties (living to the garden, balcony
+                            hosts to their facade, open-plan partners in one band), local search
+                            (move / swap / one-for-two / detach a bathroom into an empty strip)
+5. Subdivision planner.py   units ordered by adjacency affinity; widths by flex-weighted water filling
+                            with rule minimums (width, door frontage, area) on a 5 cm grid
+6. Score       planner.py   area error (explicit targets x2, quadratic), room proportions, zoning,
+                            unmet adjacency/open plan, footprint aspect, wasted strips, GFA error
+7. Regions     regions.py   corridor, hall, stair core (void / staircase / landing), rooms, garage,
+                            balconies, terraces; open edges (hall-corridor, open plan, stair arrivals;
+                            open-plan pairs across the corridor open onto it)
+8. Walls       regions.py   interior walls where two regions meet (maximal runs, vertical runs split at
+                            X-crossings); exterior loop per storey; garage walls end at the house face
+9. Elements    build.py     doors (front, corridor doors near the core, suites from their bedroom,
+                            garage, sliding balcony/garden doors), windows (glazing ratio per style,
+                            upper sills >= guard height), slabs (+ stair holes, balcony, terrace),
+                            stairs + railings, roofs (flat/gable/hip + flat garage roof), relationships,
+                            furniture (furnish.py: per-room templates clear of door zones)
+10. Validate   engine.py    model invariants + reachability; the best-scoring candidate that validates
+                            wins (up to 6 are built)
+```
+
+Determinism: the only randomness is `random.Random(f"{seed}:{skeleton}:{variant}")`; all ties break on stable keys (never object identity or hash order — a test runs the engine under two `PYTHONHASHSEED`s). Same spec + seed + profile + config + id namespace ⇒ byte-identical model JSON. Typical runtime: 0.05–1 s for the reference specs.
+
+### 16.3 What the engine reports
+
+- **Deviations** (`LayoutResult.warnings`): explicit room targets off by > 15 %, gross floor area off by > 5 %, unmet `adjacent_to`/`open_to` — never hidden; shown in the version's design report.
+- **Notes**: derived floor area, rooms enlarged/reduced to fill the area, empty street-side strips turned into landing space, balconies/terraces moved to another host room.
+- **Infeasibility** (`LAYOUT_INFEASIBLE`): the most frequent rejection reasons of all candidates (e.g. "footprint wider than the plot allows", "rooms do not fit the garden-side band at their minimum widths", "3.1 m needs 17 risers …").
+
+### 16.4 Tests
+
+`tests/layout/`: 10 reference specs (`data/fixtures/specs`, incl. the 280 m² 2-storey 4-bed example, a 3-storey villa, bungalows, a narrow plot, no area given) must validate, be fully reachable, have no rules findings, deliver the program (counts, levels, suites, garage/balcony/terrace, GFA ± 3 %) and match their **golden files** (`data/fixtures/golden/*.golden.json`: footprint, rooms + areas, counts, warnings, model sha256; update deliberately with `pnpm golden`). Hypothesis generates random in-scope specs and asserts invariants, reachability, containment and reproducibility. `data/fixtures/generated-house.model.json` is rendered by the web engine tests.
+
+### 16.5 Limitations (layout@1.0.0)
+
+- One plan type (double-loaded corridor, street on the south); no L/U-shaped houses except the garage annex, no courtyards, no sloped sites, no basements.
+- Straight flights only; the 3-storey core is a conceptual switchback (the pocket under the second flight belongs to the staircase room). Storey height is limited to one flight (≤ 16 risers → ≤ 3.04 m with the generic profile).
+- Rooms only span a full band or are tucked against the corridor; small houses (< ~60 m² per storey) lose a large share to hall, core and corridor.
+- Windows are sized by glazing ratio per facade segment, not by view/orientation; no skylights; no guards for low upper-floor sills (sills are raised to the guard height instead).
+- Furniture is basic and skipped when it does not fit (e.g. shallow balconies).
+- Gable roofs inherit the Phase 1 renderer limitation (no gable-end infill).
 
 ## 17. MEP generator (schematic) — Phase 6
 

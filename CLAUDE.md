@@ -94,11 +94,19 @@ pnpm typecheck               # tsc --noEmit + mypy
 pnpm test                    # vitest + pytest (pytest auto-starts embedded Postgres unless TEST_DATABASE_URL is set)
 pnpm check                   # lint + typecheck + test
 pnpm migrate                 # alembic upgrade head
-pnpm schema                  # regenerate packages/schema (JSON Schema + TS types) from Pydantic
+pnpm schema                  # regenerate packages/schema (model + spec JSON Schemas, TS types) from Pydantic
 pnpm fixtures                # regenerate data/fixtures/demo-house.model.json from its authoring script
+pnpm golden                  # regenerate layout golden files (data/fixtures/golden) + generated-house fixture
 ```
 
-Local environment notes (dev machine is Windows): `uv` may only be available as `py -3.12 -m uv`; the scripts in `package.json` call `uv` through `scripts/uv.mjs`, which falls back automatically. `make` is optional.
+Local environment notes (dev machine is Windows): `uv` may only be available as `py -3.12 -m uv`; the scripts in `package.json` call `uv` through `scripts/uv.mjs`, which falls back automatically. `make` is optional. `pnpm db:local` may come up on a new port after a restart — copy the printed `DATABASE_URL` into `.env`. The `api` preview config runs uvicorn without `--reload`: restart it after backend changes.
+
+## Layout engine notes (Phase 2)
+
+- Entry point `layout.engine.generate_layout(spec, profile, *, id_namespace, seed, ...)`; design in `docs/3d-engine.md` §16. The generation service passes the project id as `id_namespace`.
+- Determinism: the only randomness is the seeded `random.Random` in the candidate search. Never break ties on object identity (`id()`), memory order, set/dict-of-hash iteration or float noise — a test runs the engine under two `PYTHONHASHSEED`s.
+- Any change to layout output (incl. furniture) changes the golden files: run `pnpm golden` deliberately and explain the change in the commit. Bump `ENGINE_VERSION` in `layout/config.py` when generated models change meaningfully.
+- Generated models must pass `validate_model` with no errors and no `ROOM_UNREACHABLE`, and `rules.model_checks` with no findings, for all reference specs (`data/fixtures/specs`).
 ## Working agreements for Claude
 
 - Read the relevant `/docs` file before changing a subsystem; update docs when behavior or decisions change.

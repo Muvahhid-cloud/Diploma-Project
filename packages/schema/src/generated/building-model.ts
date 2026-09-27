@@ -43,6 +43,10 @@ export type Origin = "generated" | "user";
  * via the `definition` "WallKind".
  */
 export type WallKind = "exterior" | "interior" | "partition";
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "WallAlignment".
+ */
 export type WallAlignment = "center" | "left" | "right";
 /**
  * This interface was referenced by `BuildingModel`'s JSON-Schema
@@ -133,11 +137,6 @@ export type FurnitureKind =
   | "basin"
   | "bathtub"
   | "shower";
-/**
- * This interface was referenced by `BuildingModel`'s JSON-Schema
- * via the `definition` "WallAlignment".
- */
-export type WallAlignment1 = "center" | "left" | "right";
 
 export interface BuildingModel {
   schema_version: "1.0.0";

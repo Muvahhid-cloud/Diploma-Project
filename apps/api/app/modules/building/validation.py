@@ -5,6 +5,7 @@ cross-element rules. Errors make a model invalid; warnings are reported to the u
 """
 
 import itertools
+import math
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable
@@ -34,8 +35,9 @@ from app.modules.building.geometry import (
     to_absolute,
     wall_axis,
 )
+from app.modules.building.issues import Issue
 from app.modules.building.model import BuildingModel, Level
-from app.modules.building.primitives import EPS, Frozen
+from app.modules.building.primitives import EPS
 
 HABITABLE_ROOMS = frozenset(
     {
@@ -51,12 +53,7 @@ AREA_TOLERANCE = 0.01  # m², matches area rounding
 OVERLAP_TOLERANCE = 1e-3  # m²
 
 
-class ModelIssue(Frozen):
-    severity: Literal["error", "warning"]
-    code: str
-    path: str  # JSON pointer into the model document
-    message: str
-    element_id: uuid.UUID | None
+ModelIssue = Issue  # path = JSON pointer into the model document
 
 
 class _Checker:
@@ -427,6 +424,110 @@ class _Checker:
                     el.id,
                 )
 
+    def reachability(self) -> None:
+        """Every room must be reachable from the entrance through doors, open (wall-less)
+        boundaries and stairs. Reported as a warning: users may later edit models into
+        intermediate states, but generated models must have none."""
+        rooms = [el for el in self.model.elements if isinstance(el, Room)]
+        if not rooms:
+            return
+        polys = {
+            r.id: ShapelyPolygon(to_absolute(r.properties.boundary, r.position, r.rotation))
+            for r in rooms
+        }
+        graph: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+
+        def link(ids: list[uuid.UUID]) -> None:
+            for a, b in itertools.combinations(ids, 2):
+                graph[a].add(b)
+                graph[b].add(a)
+
+        def rooms_touching(level_id: uuid.UUID | None, point: ShapelyPoint) -> list[uuid.UUID]:
+            return [
+                r.id
+                for r in rooms
+                if r.level_id == level_id and polys[r.id].exterior.distance(point) < EPS
+            ]
+
+        entries: set[uuid.UUID] = set()
+        exterior_doors: set[uuid.UUID] = set()
+        for el in self.model.elements:
+            if not isinstance(el, Door):
+                continue
+            hosts = [r.target_id for r in el.relationships if r.kind == RelationshipKind.HOSTED_BY]
+            host = self.by_id.get(hosts[0]) if hosts else None
+            if not isinstance(host, Wall):
+                continue
+            (sx, sy), (ex, ey) = wall_axis(host)
+            t = (el.position.x + el.dimensions.width / 2) / host.dimensions.length
+            touching = rooms_touching(
+                host.level_id, ShapelyPoint(sx + (ex - sx) * t, sy + (ey - sy) * t)
+            )
+            link(touching)
+            if len(touching) == 1:
+                exterior_doors.add(touching[0])
+                if el.properties.door_kind == DoorKind.ENTRANCE:
+                    entries.add(touching[0])
+
+        walls_by_level: dict[uuid.UUID | None, list[tuple[Point2, Point2]]] = defaultdict(list)
+        for el in self.model.elements:
+            if isinstance(el, Wall):
+                walls_by_level[el.level_id].append(wall_axis(el))
+        for a, b in itertools.combinations(rooms, 2):
+            if a.level_id != b.level_id:
+                continue
+            if _open_boundary(polys[a.id], polys[b.id], walls_by_level[a.level_id]) >= 0.6:
+                link([a.id, b.id])
+
+        for el in self.model.elements:
+            if not isinstance(el, Stair):
+                continue
+            c, s = math.cos(el.rotation.z), math.sin(el.rotation.z)
+            along = el.dimensions.run_length + 0.3
+            half = el.dimensions.width / 2
+            start = ShapelyPoint(
+                el.position.x + 0.1 * c - half * s, el.position.y + 0.1 * s + half * c
+            )
+            top = ShapelyPoint(
+                el.position.x + along * c - half * s, el.position.y + along * s + half * c
+            )
+            bottom_rooms = [
+                r.id
+                for r in rooms
+                if r.level_id == el.properties.from_level_id
+                and polys[r.id].buffer(EPS).contains(start)
+            ]
+            top_rooms = [
+                r.id
+                for r in rooms
+                if r.level_id == el.properties.to_level_id and polys[r.id].buffer(EPS).contains(top)
+            ]
+            for lo in bottom_rooms:
+                for hi in top_rooms:
+                    link([lo, hi])
+
+        start_set = entries or exterior_doors
+        if not start_set:
+            self.add("warning", "NO_ENTRANCE", "/elements", "The building has no exterior door")
+            return
+        seen = set(start_set)
+        queue = list(start_set)
+        while queue:
+            current = queue.pop()
+            for nxt in graph[current]:
+                if nxt not in seen:
+                    seen.add(nxt)
+                    queue.append(nxt)
+        for r in rooms:
+            if r.id not in seen:
+                self.add(
+                    "warning",
+                    "ROOM_UNREACHABLE",
+                    self.path(r.id),
+                    f"{r.name} cannot be reached from the entrance",
+                    r.id,
+                )
+
     def railings(self) -> None:
         for el in self.model.elements:
             if isinstance(el, Railing) and abs(el.properties.rise) > el.dimensions.length:
@@ -451,7 +552,64 @@ def validate_model(
     checker.polygons()
     checker.stairs()
     checker.railings()
+    checker.reachability()
     return checker.issues
+
+
+Point2 = tuple[float, float]
+
+
+def _open_boundary(
+    a: ShapelyPolygon, b: ShapelyPolygon, walls: list[tuple[Point2, Point2]]
+) -> float:
+    """Length of the boundary shared by rooms `a` and `b` that no wall axis runs along.
+
+    Uses EPS-tolerant edge overlaps rather than exact geometric intersection, so coordinates
+    that differ by float noise (7.1 vs 7.1000000000000005) still count as shared."""
+    total = 0.0
+    ca = [(float(x), float(y)) for x, y in list(a.exterior.coords)[:-1]]
+    cb = [(float(x), float(y)) for x, y in list(b.exterior.coords)[:-1]]
+    for p, q in _shared_segments(ca, cb):
+        seg_len = math.dist(p, q)
+        ux, uy = (q[0] - p[0]) / seg_len, (q[1] - p[1]) / seg_len
+        covered: list[tuple[float, float]] = []
+        for w0, w1 in walls:
+            if any(abs((w[0] - p[0]) * uy - (w[1] - p[1]) * ux) > EPS for w in (w0, w1)):
+                continue  # not on this segment's line
+            t0 = (w0[0] - p[0]) * ux + (w0[1] - p[1]) * uy
+            t1 = (w1[0] - p[0]) * ux + (w1[1] - p[1]) * uy
+            lo, hi = max(0.0, min(t0, t1)), min(seg_len, max(t0, t1))
+            if hi > lo:
+                covered.append((lo, hi))
+        covered.sort()
+        cursor = 0.0
+        for lo, hi in covered:
+            if lo > cursor:
+                total += lo - cursor
+            cursor = max(cursor, hi)
+        total += max(0.0, seg_len - cursor)
+    return total
+
+
+def _shared_segments(a: list[Point2], b: list[Point2]) -> list[tuple[Point2, Point2]]:
+    """Collinear overlaps between the edges of two closed rings (EPS tolerant)."""
+    out = []
+    for i in range(len(a)):
+        p, q = a[i], a[(i + 1) % len(a)]
+        length = math.dist(p, q)
+        if length < EPS:
+            continue
+        ux, uy = (q[0] - p[0]) / length, (q[1] - p[1]) / length
+        for j in range(len(b)):
+            r, s = b[j], b[(j + 1) % len(b)]
+            if any(abs((w[0] - p[0]) * uy - (w[1] - p[1]) * ux) > EPS for w in (r, s)):
+                continue
+            t0 = (r[0] - p[0]) * ux + (r[1] - p[1]) * uy
+            t1 = (s[0] - p[0]) * ux + (s[1] - p[1]) * uy
+            lo, hi = max(0.0, min(t0, t1)), min(length, max(t0, t1))
+            if hi - lo > EPS:
+                out.append(((p[0] + lo * ux, p[1] + lo * uy), (p[0] + hi * ux, p[1] + hi * uy)))
+    return out
 
 
 def errors(issues: Iterable[ModelIssue]) -> list[ModelIssue]:

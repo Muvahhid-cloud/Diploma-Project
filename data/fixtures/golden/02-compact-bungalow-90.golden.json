@@ -1,0 +1,81 @@
+{
+  "engine_version": "layout@1.0.0",
+  "seed": 0,
+  "footprint_m": [
+    9.5,
+    9.45
+  ],
+  "summary": {
+    "storeys": 1,
+    "gross_floor_area_m2": 89.8,
+    "net_floor_area_m2": 70.0,
+    "rooms": 5,
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "wcs": 0,
+    "garage": false,
+    "balconies": 0,
+    "terraces": 0,
+    "walls": 11,
+    "doors": 7,
+    "windows": 7,
+    "elements": 48
+  },
+  "element_counts": {
+    "door": 7,
+    "furniture": 14,
+    "roof": 1,
+    "room": 7,
+    "slab": 1,
+    "wall": 11,
+    "window": 7
+  },
+  "rooms": [
+    {
+      "level": 0,
+      "key": "room:bathroom",
+      "type": "bathroom",
+      "area_m2": 6.08
+    },
+    {
+      "level": 0,
+      "key": "room:bedroom_1",
+      "type": "bedroom",
+      "area_m2": 10.83
+    },
+    {
+      "level": 0,
+      "key": "room:bedroom_2",
+      "type": "bedroom",
+      "area_m2": 10.83
+    },
+    {
+      "level": 0,
+      "key": "room:corridor_0",
+      "type": "corridor",
+      "area_m2": 11.4
+    },
+    {
+      "level": 0,
+      "key": "room:hall_0",
+      "type": "entrance",
+      "area_m2": 8.36
+    },
+    {
+      "level": 0,
+      "key": "room:kitchen_living",
+      "type": "open_kitchen_living",
+      "area_m2": 37.72
+    },
+    {
+      "level": 0,
+      "key": "room:storage",
+      "type": "storage",
+      "area_m2": 4.55
+    }
+  ],
+  "warnings": [
+    "LAYOUT_AREA_DEVIATION"
+  ],
+  "model_sha256": "891ac4eb82f5726c30349c58db288c720d4b624803d5ab8e1cd06c450945dbf0"
+}

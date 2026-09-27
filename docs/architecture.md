@@ -134,7 +134,8 @@ apps/api/
         ├── quantities/          # ★ DOMAIN: model → quantity takeoff
         ├── costing/             # ★ DOMAIN: takeoff × catalog → estimate; catalog persistence
         ├── ai/                  # AIProvider abstraction, providers, prompts, pipeline
-        ├── jobs/                # generation job tracking (async work)
+        ├── generation/          # use case: validate spec → layout job → version (Phase 2)
+        ├── jobs/                # job table + in-process runner (async work)
         └── reports/             # report assembly (HTML → PDF)
 ```
 
@@ -170,11 +171,12 @@ All routes under `/api/v1`. OpenAPI generated automatically.
 | POST | `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout` | Auth |
 | GET/POST | `/projects` | List / create |
 | GET/PATCH/DELETE | `/projects/{id}` | Project CRUD (delete = soft) |
-| POST | `/projects/{id}/generate` | NL prompt → job (spec → model) |
-| GET | `/jobs/{id}` | Poll job status/progress/result |
-| POST | `/projects/{id}/spec/validate` | Validate a spec without generating |
-| GET | `/projects/{id}/versions` | Version tree |
-| GET | `/projects/{id}/versions/{vid}` | Full version (spec + model) |
+| POST | `/projects/{id}/generate` | ☑ Phase 2: `{spec, seed, label?}` → 202 job (layout → new version); tier-1/2 spec errors → 422 `SPEC_INVALID`; one active generation per project (409). Phase 3 adds the NL prompt → spec step in front |
+| GET | `/jobs/{id}` | ☑ Poll job status / real stage / result / error (owner only) |
+| POST | `/projects/{id}/spec/validate` | ☑ Validate a spec (schema + rules profile) without generating |
+| GET | `/projects/{id}/versions` | ☑ Versions, newest first (summaries only) |
+| GET | `/projects/{id}/versions/{vid}` | ☑ Full version: spec + model + generation report + rules/model findings evaluated on read |
+| POST | `/projects/{id}/versions/demo` | ☑ Store the hand-authored demo house as a new version |
 | POST | `/projects/{id}/versions/{vid}/modify/plan` | NL → ModificationPlan (preview, no write) |
 | POST | `/projects/{id}/versions/{vid}/operations` | Apply ops → new version (or draft) |
 | GET | `/projects/{id}/versions/{vid}/quantities` | Takeoff |
@@ -187,7 +189,7 @@ All routes under `/api/v1`. OpenAPI generated automatically.
 
 ### 4.2 Long-running work
 
-LLM calls + layout search take 5–60 s. MVP: a `jobs` table plus in-process `asyncio` background tasks; the client polls `GET /jobs/{id}` via TanStack Query. The job interface (`enqueue(kind, payload) → job_id`) is designed so a real worker (arq + Redis) can replace the in-process runner without API changes. We add Redis only when we run >1 API replica or jobs outgrow the request process.
+LLM calls + layout search take 5–60 s (the Phase 2 layout engine alone: 0.05–1 s). Implemented: a `jobs` table plus in-process `asyncio` background tasks (`modules/jobs/runner.py`; the CPU-bound layout runs in a worker thread); the client polls `GET /jobs/{id}` via TanStack Query and shows the job's real stages. The job interface (`enqueue(kind, payload) → job_id`) is designed so a real worker (arq + Redis) can replace the in-process runner without API changes. We add Redis only when we run >1 API replica or jobs outgrow the request process.
 
 ### 4.3 Authentication
 

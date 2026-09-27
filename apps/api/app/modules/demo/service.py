@@ -1,6 +1,5 @@
-"""Loads and validates the demo BuildingModel fixture and the material library."""
+"""Loads and validates the demo BuildingModel fixture."""
 
-import json
 from functools import lru_cache
 from pathlib import Path
 
@@ -9,20 +8,14 @@ from fastapi import status
 from app.core.errors import AppError
 from app.modules.building.model import BuildingModel
 from app.modules.building.validation import errors, validate_model
+from app.shared.data_files import material_ids
 
 DEMO_MODEL_PATH = Path("fixtures") / "demo-house.model.json"
-MATERIAL_LIBRARY_PATH = Path("materials") / "library.json"
 
 
 class ModelInvalidError(AppError):
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     code = "MODEL_INVALID"
-
-
-@lru_cache
-def material_ids(data_dir: Path) -> frozenset[str]:
-    library = json.loads((data_dir / MATERIAL_LIBRARY_PATH).read_text(encoding="utf-8"))
-    return frozenset(m["id"] for m in library["materials"])
 
 
 @lru_cache

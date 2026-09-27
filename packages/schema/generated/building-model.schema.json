@@ -1494,8 +1494,7 @@
           "$ref": "#/$defs/WallKind"
         },
         "alignment": {
-          "$ref": "#/$defs/WallAlignment",
-          "default": "center"
+          "$ref": "#/$defs/WallAlignment"
         },
         "load_bearing": {
           "type": "boolean"

@@ -1,0 +1,116 @@
+{
+  "engine_version": "layout@1.0.0",
+  "seed": 0,
+  "footprint_m": [
+    7.6,
+    13.15
+  ],
+  "summary": {
+    "storeys": 2,
+    "gross_floor_area_m2": 199.9,
+    "net_floor_area_m2": 151.1,
+    "rooms": 8,
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "wcs": 1,
+    "garage": false,
+    "balconies": 1,
+    "terraces": 0,
+    "walls": 22,
+    "doors": 11,
+    "windows": 20,
+    "elements": 97
+  },
+  "element_counts": {
+    "door": 11,
+    "furniture": 23,
+    "railing": 4,
+    "roof": 1,
+    "room": 12,
+    "slab": 3,
+    "stair": 1,
+    "wall": 22,
+    "window": 20
+  },
+  "rooms": [
+    {
+      "level": 0,
+      "key": "room:corridor_0",
+      "type": "corridor",
+      "area_m2": 9.12
+    },
+    {
+      "level": 0,
+      "key": "room:hall_0",
+      "type": "entrance",
+      "area_m2": 24.03
+    },
+    {
+      "level": 0,
+      "key": "room:kitchen_living",
+      "type": "open_kitchen_living",
+      "area_m2": 46.53
+    },
+    {
+      "level": 0,
+      "key": "room:study",
+      "type": "study",
+      "area_m2": 17.01
+    },
+    {
+      "level": 0,
+      "key": "room:wc",
+      "type": "wc",
+      "area_m2": 3.25
+    },
+    {
+      "level": 1,
+      "key": "room:balcony_0",
+      "type": "balcony",
+      "area_m2": 3.98
+    },
+    {
+      "level": 1,
+      "key": "room:bathroom",
+      "type": "bathroom",
+      "area_m2": 7.8
+    },
+    {
+      "level": 1,
+      "key": "room:bedroom_1",
+      "type": "bedroom",
+      "area_m2": 17.55
+    },
+    {
+      "level": 1,
+      "key": "room:bedroom_2",
+      "type": "bedroom",
+      "area_m2": 17.01
+    },
+    {
+      "level": 1,
+      "key": "room:corridor_1",
+      "type": "corridor",
+      "area_m2": 9.12
+    },
+    {
+      "level": 1,
+      "key": "room:master_bedroom",
+      "type": "bedroom",
+      "area_m2": 36.1
+    },
+    {
+      "level": 1,
+      "key": "room:master_bedroom_en_suite",
+      "type": "en_suite",
+      "area_m2": 5.88
+    }
+  ],
+  "warnings": [
+    "LAYOUT_AREA_DEVIATION",
+    "LAYOUT_AREA_DEVIATION",
+    "LAYOUT_AREA_DEVIATION",
+    "LAYOUT_AREA_DEVIATION"
+  ],
+  "model_sha256": "817d3d52ad69af8f492ee4159630872c23d6609bb164b7e116473b7b10428299"
+}

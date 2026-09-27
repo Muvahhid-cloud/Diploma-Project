@@ -1,13 +1,36 @@
-// Public entry of @buildai/schema. The canonical schema lives in Pydantic
+// Public entry of @buildai/schema. The canonical schemas live in Pydantic
 // (apps/api/app/modules/building); everything under ./generated and ../generated is produced
 // by `pnpm schema`. See docs/building-model.md §8 and CLAUDE.md rule 7.
 import { z } from "zod";
 
 import buildingModelJsonSchema from "../generated/building-model.schema.json";
+import buildingSpecificationJsonSchema from "../generated/building-specification.schema.json";
 import type { BuildingModel } from "./generated/building-model";
+import type { BuildingSpecification } from "./generated/building-specification";
 
 export type * from "./generated/building-model";
-export { buildingModelJsonSchema };
+export type {
+  BuildingSpecification,
+  RoomRequirement,
+  SpecRoomType,
+  RoomFeature,
+  ArchitecturalStyle,
+  InteriorStyle,
+  WindowStyle,
+  FacadeMaterial,
+  FinishLevel,
+  Targets,
+  Site,
+  Style,
+  RoofSpec,
+  Features,
+  Garage,
+  Balcony,
+  Terrace,
+  Budget,
+  Assumption,
+} from "./generated/building-specification";
+export { buildingModelJsonSchema, buildingSpecificationJsonSchema };
 
 type JsonSchemaInput = Parameters<typeof z.fromJSONSchema>[0];
 
@@ -19,3 +42,8 @@ type JsonSchemaInput = Parameters<typeof z.fromJSONSchema>[0];
 export const buildingModelSchema = z.fromJSONSchema(
   buildingModelJsonSchema as JsonSchemaInput,
 ) as z.ZodType<BuildingModel>;
+
+/** Tier-1 (structural) validator for specifications; tier-2 rules run on the API. */
+export const buildingSpecificationSchema = z.fromJSONSchema(
+  buildingSpecificationJsonSchema as JsonSchemaInput,
+) as z.ZodType<BuildingSpecification>;
