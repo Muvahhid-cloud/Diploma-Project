@@ -4,7 +4,7 @@ Status: **Accepted (v0.1)** · Code: `apps/api/app/modules/ai/`
 
 ## 1. Role of AI
 
-AI is used for **language ↔ structure**, never for geometry.
+AI is used for **language ↔ structure**, never for geometry. The AI generates a `BuildingSpecification` and typed modification operations only; it never generates or manipulates meshes. The deterministic layout/geometry engine is solely responsible for geometry. AI is connected only after the spec → model → 3D pipeline works without it (roadmap Phase 3).
 
 | Task | Input | Output (validated) |
 |---|---|---|
@@ -40,11 +40,10 @@ Implementations:
 | Provider | Purpose |
 |---|---|
 | `MockAIProvider` | Default for local dev and **all automated tests**. Deterministic rule/regex parser: extracts area, storeys, bedroom/bathroom counts, garage cars, keywords (balcony, panoramic, minimalist, flat roof…), fills defaults, records assumptions. Also canned ModificationPlans for common phrases ("make X bigger", "add a window to …"). |
-| `AnthropicProvider` | Claude via tool use / structured output |
-| `OpenAIProvider` | Structured outputs |
-| `OpenAICompatibleProvider` | Any OpenAI-compatible endpoint (local models via Ollama/vLLM) |
+| `AnthropicProvider` | **First real provider (decided).** Claude via tool use / structured output |
+| `OpenAICompatibleProvider` | Later. Any OpenAI-compatible endpoint (OpenAI, local models via Ollama/vLLM) |
 
-Selection via config: `AI_PROVIDER=mock|anthropic|openai|openai_compatible`, `AI_MODEL=...`, per-task overrides (`AI_MODEL_INTERPRET`, …). Vendor SDKs are imported **only** inside their adapter file. No other module knows which vendor is used.
+Selection via config: `AI_PROVIDER=mock|anthropic|openai_compatible`, `AI_MODEL=...`, per-task overrides (`AI_MODEL_INTERPRET`, …). Vendor SDKs are imported **only** inside their adapter file. No other module knows which vendor is used.
 
 ## 3. Interpret pipeline (NL → spec)
 
@@ -156,4 +155,4 @@ Prompts are versioned files: `ai/prompts/interpret/v3.md`. `prompt_version` is s
     len(features.balconies): {gte: 1}
 ```
 
-`make eval PROVIDER=anthropic` scores a provider/prompt version. Required before changing default model or prompt version. Not part of normal CI (costs money); MockAIProvider covers CI.
+`pnpm eval PROVIDER=anthropic` scores a provider/prompt version. Required before changing default model or prompt version. Not part of normal CI (costs money); MockAIProvider covers CI.

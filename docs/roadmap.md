@@ -1,34 +1,54 @@
 # Roadmap
 
-Status: **Draft (v0.1)** · Each phase ends with a demoable, tested increment. Phases are ordered to prove the riskiest link (spec → geometry → render) **before** investing in AI and polish.
+Status: **Accepted (v0.2)** · Each phase ends with a demoable, tested increment. Phases are ordered to prove the riskiest link (spec → geometry → render) **before** investing in AI and polish.
 
 Legend: ☐ not started · ◐ in progress · ☑ done
 
 ---
 
-## Phase 0 — Foundations ☐
-Goal: everything runs with one command; contracts in place.
+## Phase 0 — Foundations ◐
+Goal: everything runs with one command; contracts in place. No building features yet.
 
-- Monorepo scaffold: `apps/web` (Next.js, TS strict, Tailwind), `apps/api` (FastAPI, uv), `packages/schema`
-- `docker-compose.yml`: postgres, api, web; `.env.example`; Makefile (`dev`, `test`, `lint`, `schema`, `migrate`, `seed`)
-- Core API: config, DB session, error envelope, health check, logging
+- Monorepo scaffold: `apps/web` (Next.js, TS strict, Tailwind), `apps/api` (FastAPI, uv), `packages/schema` (placeholder until Phase 1)
+- `docker-compose.yml`: postgres, api, web; `.env.example`; root `package.json` scripts + thin Makefile (`dev`, `test`, `lint`, `typecheck`, `schema`, `migrate`, `seed`)
+- Core API: config (pydantic-settings), async DB session, error envelope, health (`/health`, `/health/db`), logging, disclaimer constant
 - Alembic baseline; users + refresh_tokens; JWT auth (register/login/refresh/logout)
-- Projects CRUD + membership check
-- Web: auth pages, project list, API client with Zod validation, TanStack Query setup
-- CI: lint, type-check, tests, migration up/down, schema drift check
+- Projects CRUD + ownership check
+- Web: auth pages, project list, API client with Zod validation, TanStack Query setup, disclaimer footer
+- CI (GitHub Actions): lint, type-check, tests, migration up/down against Postgres service, build
+
+**Phase 0 verification checklist** (all must be green before Phase 1):
+
+| Check | How |
+|---|---|
+| Frontend setup | `pnpm --filter web build` succeeds; dev server serves `/` |
+| Backend setup | API starts; `GET /health` → 200 |
+| PostgreSQL connection | `GET /health/db` → 200; Alembic `upgrade head` / `downgrade base` succeed |
+| Docker Compose | `docker compose up --build` → db healthy, api healthy, web reachable |
+| Environment configuration | `.env.example` complete; API fails fast with clear error on missing required vars |
+| Project structure | Matches `docs/architecture.md` §3–§5 |
+| Lint / type check | `pnpm lint`, `pnpm typecheck` (ruff, mypy, import-linter, ESLint, tsc) clean |
+| Basic tests | `pnpm test`: API (health, auth, projects) + web (unit) pass |
+| CI-ready | `.github/workflows/ci.yml` runs all of the above on push/PR |
+
 - **Exit**: sign up → create project → see empty editor, in Docker, CI green
 
-## Phase 1 — Building model & viewer (no AI, no layout) ☐
-Goal: prove the model → 3D path with a hand-authored model.
+## Phase 1 — Hand-authored model → procedural 3D (no AI, no layout) ☐
+Goal: prove the highest-risk dependency — BuildingModel → deterministic procedural 3D → interactive viewer — completely independent of AI.
 
-- Pydantic `BuildingSpecification` + `BuildingModel` (building-model.md), invariants validator
-- Schema codegen → TS types + Zod
-- Fixture `data/fixtures/simple-house.model.json` (2 levels, ~8 rooms, doors, windows, slabs, flat roof)
-- TS engine: builders for wall (panel decomposition), door, window, slab, room floor, roof, stair
-- Viewer: orbit, fit, selection + inspector, floor isolation, cutaway, layer toggles
-- Versions table + store fixture as v1 of a project
-- **Exit**: open a project → fixture renders; click any element → inspector shows UUID/type/dims/material/relationships
+- Pydantic `BuildingModel` (building-model.md) + invariants validator; `BuildingSpecification` schema (unused until Phase 2)
+- Schema codegen → TS types + Zod in `packages/schema`
+- **Demo fixture** `data/fixtures/demo-house.model.json`, hand-authored:
+  - 2 floors (ground + upper), several rooms (entrance/hall, open kitchen-living, WC, garage/storage on ground; 2–3 bedrooms, bathroom, landing on upper)
+  - exterior + interior walls, doors, windows (incl. one panoramic), ground + upper floor slabs (with stair hole)
+  - straight stair connecting the floors, flat roof with parapet
+  - basic furniture (beds, sofa, dining table + chairs, kitchen counter/island, wardrobe, bathroom fixtures)
+- TS engine: builders for wall (panel decomposition + corner joins), door, window, slab, room floor, roof, stair, railing, furniture primitives; determinism snapshot tests
+- Viewer: **rotate, zoom, pan**, fit; **select objects**; **isolate floors**; **inspector** with all element fields; **hide/show layers** (architecture, structure, furniture); cutaway
+- Store the fixture as v1 of a demo project (versions table)
+- **Exit**: open demo project → house renders; every interaction above works; clicking any element shows UUID/type/dims/position/rotation/material/properties/relationships; same model ⇒ identical geometry hash
 
+No AI work of any kind happens before Phase 1 exits.
 ## Phase 2 — Layout engine (spec → model) ☐
 Goal: deterministic geometry from a spec.
 
@@ -85,12 +105,20 @@ IFC export · GLB fixture catalog · multiple cost regions & user-editable catal
 
 ---
 
-## Open decisions (need product input)
+## Decisions log
+
+| # | Question | Decision (2026-09-27) |
+|---|---|---|
+| 1 | Target region & currency | **Kazakhstan, KZT.** Costing is currency-agnostic (KZT/USD/EUR/… via catalogs). Seed catalog `kz-almaty-demo` is illustrative, flagged demo |
+| 2 | First real AI provider | **Anthropic.** MockAIProvider for dev/tests; OpenAI-compatible adapter later |
+| 3 | Building rules | **Generic configurable `BuildingRulesProfile`** (`generic-residential@1`); conceptual only; regional profiles (e.g. KZ) later. Not a code-compliance check |
+| 4 | Phase order | 0 foundations → 1 hand-authored model → 3D → 2 spec → layout → 3 NL → AI. 3D pipeline must work without AI first |
+| 5 | Units | Metric only (input conversion supported later) |
+| 6 | Task runner | Root `package.json` scripts (Windows-friendly) + thin Makefile |
+
+## Open decisions
 
 | # | Question | Default until decided |
 |---|---|---|
-| 1 | Target market / region & currency for the first cost catalog | Demo catalog in EUR, clearly labelled "demo rates" |
-| 2 | First real AI provider | Anthropic adapter first; OpenAI-compatible second |
-| 3 | Building-code rule set (min room sizes, stair geometry) | Generic residential defaults, configurable |
-| 4 | Imperial units in UI | Metric only in v1 (input conversion supported) |
-| 5 | Hosting target | Docker Compose on a single VM |
+| 1 | Hosting target | Docker Compose on a single VM |
+| 2 | UI language(s) (EN / RU / KZ) | English first; strings kept i18n-ready |

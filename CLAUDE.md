@@ -17,8 +17,8 @@ Current phase: see the ☐/◐/☑ markers in `docs/roadmap.md`. Do not implemen
 3. **Every element** has: `id` (UUID), `type`, `name`, `layer`, `level_id`, `position`, `rotation`, `dimensions`, `material_id`, `properties`, `relationships`, `origin`, `locked`, `semantic_key`. Walls are wall objects, rooms are room objects, windows are window objects, pipes are pipe objects. No "blob" geometry.
 4. **Models change only through typed operations** (`building/operations`). No ad-hoc dict mutation of models in services or routes.
 5. **Deterministic engines.** Layout/MEP/quantities/costing are pure functions of (input, seed, engine_version). No wall-clock, no global random, no I/O inside them.
-6. **Domain purity.** `modules/{building,layout,mep,quantities,costing}` must not import FastAPI, SQLAlchemy, `app.core.db`, or `modules/ai`. Enforced by import-linter.
-7. **One schema source.** Pydantic models in `apps/api/app/modules/building/` are canonical. `packages/schema` is **generated** (`make schema`) — never hand-edit it. Frontend uses the generated TS types and Zod validators.
+6. **Domain purity.** `modules/{building,rules,layout,mep,quantities,costing}` must not import FastAPI, SQLAlchemy, `app.core.db`, or `modules/ai`. Enforced by import-linter.
+7. **One schema source.** Pydantic models in `apps/api/app/modules/building/` are canonical. `packages/schema` is **generated** (`pnpm schema`) — never hand-edit it. Frontend uses the generated TS types and Zod validators.
 8. **Units & axes.** Meters, radians, m², m³. Model is **Z-up** (plan = XY). The only Z-up→Y-up conversion is the viewer root `<group rotation-x={-Math.PI/2}>`. Geometry rounded to 1 mm; compare with `EPS = 1e-4`.
 9. **Money** is `Decimal` in Python and a string on the wire (never JS float math for totals). Always carry a currency. Estimates are labelled preliminary.
 10. **No CSG** for wall openings — use panel decomposition. Quantities are never measured from meshes.
@@ -27,12 +27,24 @@ Current phase: see the ☐/◐/☑ markers in `docs/roadmap.md`. Do not implemen
 13. **Vendor-neutral AI.** Vendor SDKs are imported only in `modules/ai/providers/<vendor>.py`. Tests always use `MockAIProvider`; never call a paid API in CI.
 14. **Modular monolith.** No microservices, message buses, Kubernetes, or Redis until a documented need. New infra requires an ADR in `docs/architecture.md`.
 15. **Residential, rectilinear, ≤ 3 storeys** in v1. Don't generalize beyond that without an explicit decision.
+16. **No hard-coded prices or dimensional rules.** Prices come only from versioned cost catalogs; minimum/maximum dimensions come only from the active `BuildingRulesProfile` (`modules/rules`, `data/rules-profiles/`).
+17. **Currency-agnostic costing.** Every amount carries an ISO-4217 currency; never add different currencies. Primary region Kazakhstan, primary currency **KZT**. Seed catalogs are demo data and must be flagged `is_demo` and labelled "Demo / estimated rates" in the UI.
+18. **Disclaimer.** The platform is conceptual and not a replacement for licensed architectural, structural, MEP or regulatory review. Keep the single-source disclaimer (`app/core/disclaimer.py`, web `DISCLAIMER` constant) visible in the footer, cost views, rules panels and reports.
+19. **Phase order is intentional:** 0 foundations → 1 hand-authored model → procedural 3D → 2 spec → layout engine → 3 NL → AI. The 3D pipeline must work without AI before AI is connected. No AI features before Phase 1 exits.
+20. **Deterministic geometry:** same BuildingModel + same EngineConfig ⇒ identical geometry. No randomness/time in builders (see `docs/3d-engine.md`).
+
+## Recorded product decisions (2026-09-27)
+
+- Region: Kazakhstan · Currency: KZT (USD/EUR/others via additional catalogs) · Default catalog: `kz-almaty-demo` (demo rates)
+- AI: `MockAIProvider` (dev/tests) → `AnthropicProvider` (first real) → OpenAI-compatible adapter (later)
+- Rules: `generic-residential@1` profile, conceptual validation only; regional profiles later
+- First 3D milestone: hand-authored 2-floor house (rooms, walls, doors, windows, floors, stairs, roof, basic furniture) with rotate/zoom/pan, select, isolate floors, inspector, layer toggles
 
 ## Tech stack (decided)
 
 - **Web**: Next.js (App Router), React, TypeScript strict, React Three Fiber, three, @react-three/drei, Zustand, TanStack Query, Tailwind CSS, Zod. pnpm workspaces. Node 22.
 - **API**: Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2 (async, asyncpg), Alembic, PostgreSQL 16, JWT (access 15 min) + rotating hashed refresh tokens (httpOnly cookie), argon2id. shapely for polygon ops. uv for packaging.
-- **Infra**: Docker, Docker Compose. Makefile is the task entry point.
+- **Infra**: Docker, Docker Compose. Root `package.json` scripts are the task entry point (work on Windows); `Makefile` mirrors them.
 - **Tests**: pytest, Hypothesis, httpx; Vitest, React Testing Library, Playwright.
 - **Quality**: ruff, mypy (strict for domain modules), import-linter; ESLint, Prettier, `tsc --noEmit`.
 
@@ -40,10 +52,10 @@ Current phase: see the ☐/◐/☑ markers in `docs/roadmap.md`. Do not implemen
 
 ```
 apps/web/src/{app,features,engine,viewer,stores,lib,schema}
-apps/api/app/{core,shared,modules/{auth,projects,versions,building,layout,mep,quantities,costing,ai,jobs,reports}}
+apps/api/app/{core,shared,modules/{auth,projects,versions,building,rules,layout,mep,quantities,costing,ai,jobs,reports}}
 apps/api/{alembic,tests,evals}
 packages/schema/          # generated
-data/{materials,cost-catalogs,fixtures}
+data/{materials,cost-catalogs,rules-profiles,fixtures}
 docs/  infra/  docker-compose.yml  Makefile
 ```
 
@@ -65,21 +77,24 @@ docs/  infra/  docker-compose.yml  Makefile
 
 - Every domain function gets unit tests; layout changes need invariant (Hypothesis) tests and, if output changes, deliberate golden-file updates (explain why in the commit).
 - Bug fix ⇒ regression test first.
-- Before saying work is done: run the relevant `make lint`, `make typecheck`, `make test` (or the per-app equivalents) and report real results.
-- Changing Pydantic building schemas ⇒ run `make schema` and commit generated output.
+- Before saying work is done: run `pnpm lint`, `pnpm typecheck`, `pnpm test` (or the per-app equivalents) and report real results.
+- Changing Pydantic building schemas ⇒ run `pnpm schema` and commit generated output.
 
-## Commands (once scaffolded — Phase 0)
+## Commands (run from repo root)
 
 ```
-make dev          # docker compose up (db, api, web) with reload
-make test         # api + web tests
-make lint         # ruff, mypy, import-linter, eslint, tsc
-make schema       # regenerate packages/schema from Pydantic
-make migrate      # alembic upgrade head
-make seed         # materials, demo cost catalog, demo user/project
-make eval PROVIDER=...   # AI eval suite (costs money; never in CI)
+pnpm install                 # JS deps (workspace)
+pnpm api:install             # Python deps: uv sync in apps/api
+pnpm dev                     # web (3000) + api (8000) locally; needs Postgres (DATABASE_URL)
+pnpm docker:up               # docker compose up --build (db, api, web)
+pnpm lint                    # eslint + ruff + import-linter
+pnpm typecheck               # tsc --noEmit + mypy
+pnpm test                    # vitest + pytest
+pnpm migrate                 # alembic upgrade head
+pnpm schema                  # regenerate packages/schema from Pydantic (Phase 1+)
 ```
 
+Local environment notes (dev machine is Windows): `uv` may only be available as `py -3.12 -m uv`; the scripts in `package.json` call `uv` through `scripts/uv.mjs`, which falls back automatically. `make` is optional.
 ## Working agreements for Claude
 
 - Read the relevant `/docs` file before changing a subsystem; update docs when behavior or decisions change.

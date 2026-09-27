@@ -105,7 +105,7 @@ Tooling decisions:
 | Lint/format (Py) | ruff + mypy (strict on domain packages) | |
 | Lint/format (TS) | ESLint + Prettier, `strict` TS | |
 | Module boundaries (Py) | import-linter contracts | Keeps domain pure |
-| Task runner | Makefile wrapping pnpm/uv/docker | One command surface for humans and Claude |
+| Task runner | **Root `package.json` scripts** (`pnpm dev`, `pnpm test`, `pnpm lint`, …) calling pnpm/uv/docker; a thin `Makefile` mirrors them for Linux/macOS/CI | Works on Windows without `make`; one command surface for humans and Claude |
 
 `data/fixtures/` is shared by backend and frontend tests: e.g. `simple-house.model.json` is used by Python quantity tests *and* by TS geometry-builder tests, so both sides agree on the same inputs.
 
@@ -126,6 +126,7 @@ apps/api/
         ├── projects/            # project CRUD, membership
         ├── versions/            # versions, drafts, diff/compare
         ├── building/            # ★ DOMAIN: spec + model schemas, validation, operations
+        ├── rules/               # ★ DOMAIN: BuildingRulesProfile schema + evaluator (configurable, regional)
         ├── layout/              # ★ DOMAIN: spec → architectural model
         ├── mep/                 # ★ DOMAIN: plumbing / electrical / HVAC generation
         ├── quantities/          # ★ DOMAIN: model → quantity takeoff
@@ -153,7 +154,8 @@ Dependency direction:
 ```
 router → service → { repository, domain modules, ai }
 ai → building (schemas only)
-layout → building        mep → building
+rules → building (schemas only)
+layout → building, rules  mep → building, rules
 quantities → building    costing → quantities, building
 ```
 
@@ -296,6 +298,14 @@ CostCatalog(region, currency, effective_date) ─────┤
 - Estimate is labeled *preliminary / order-of-magnitude (±25 %)*.
 - Catalogs are data (YAML seeds → DB), editable per organization later.
 
+**Region & currency (decided 2026-09-27):**
+
+- Initial target region: **Kazakhstan**; primary currency **KZT**. Default catalog: `kz-almaty-demo` (KZT), flagged `is_demo: true` and labelled **"Demo / estimated rates — not market prices"** everywhere it is shown.
+- The costing engine is **currency-agnostic**: every rate, line and total carries an ISO-4217 `currency`; the engine never assumes a currency and refuses to add amounts of different currencies. KZT, USD, EUR and others are supported by adding catalogs.
+- Currency conversion (later) is an explicit, dated `ExchangeRateSet` applied to an estimate's output — never baked into catalogs.
+- Display formatting per currency via `Intl.NumberFormat` (KZT: `₸`, 0 decimals by default; the catalog declares `minor_units`).
+- **No prices in code.** Business logic only reads catalogs.
+
 ## 9. Versioning architecture (summary)
 
 Full details in [database.md §4](database.md).
@@ -324,7 +334,11 @@ Coverage targets: domain modules ≥ 90 %, services ≥ 80 %. Performance budget
 
 ---
 
-## 11. Non-goals (for now)
+## 11. Professional-review disclaimer
+
+BuildAI 3D produces **conceptual** designs, schematic MEP layouts and preliminary cost estimates. Rules profiles perform conceptual checks only. The platform is **not** a replacement for licensed architectural, structural, MEP or regulatory review. This statement appears in the README, the app footer/about page, every report, every cost view, and every rules-validation panel (single source: `DISCLAIMER` constant in the web app and `app/core/disclaimer.py` in the API).
+
+## 12. Non-goals (for now)
 
 - Structural analysis / code-compliance certification
 - Engineering-grade MEP sizing

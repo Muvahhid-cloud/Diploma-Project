@@ -1,6 +1,6 @@
 # Database
 
-Status: **Accepted (v0.1)** · PostgreSQL 16 · SQLAlchemy 2.x (typed, async via `asyncpg`) · Alembic
+Status: **Accepted (v0.2)** · PostgreSQL 16 · SQLAlchemy 2.x (typed, async via `asyncpg`) · Alembic
 
 ## 1. Principles
 
@@ -51,7 +51,9 @@ materials (library, seeded)
 | description | text | |
 | building_type | text | `single_family_house` |
 | current_version_id | uuid FK project_versions null | "head" pointer shown by default |
-| region_code | text | default cost region |
+| region_code | text | default cost region (e.g. `KZ-ALA`) |
+| currency | char(3) | default display currency (`KZT`) |
+| rules_profile_id | text FK rules_profiles | default `generic-residential@1` |
 | deleted_at | timestamptz null | soft delete |
 
 ### project_members
@@ -94,8 +96,10 @@ Per (project, user) uncommitted working state.
 
 ### cost_catalogs / cost_items
 ```
-cost_catalogs: id, code (e.g. "DEMO-EUR-2026Q3"), name, region_code, currency (char3),
-               effective_date, version int, is_active, source, created_at
+cost_catalogs: id, code (e.g. "kz-almaty-demo"), name, region_code, currency (char3, ISO-4217),
+               minor_units smallint, effective_date, version int, is_active,
+               is_demo bool (true => UI shows "Demo / estimated rates"), source, created_at
+               unique(code, version)
 cost_items:    id, catalog_id FK, item_code, description, unit, material_rate numeric(14,4),
                labor_rate numeric(14,4), equipment_rate numeric(14,4), category, notes
                unique(catalog_id, item_code)
@@ -108,6 +112,9 @@ Catalogs are **immutable once used**; edits create a new catalog version so hist
 ### analyses / reports
 analyses: `id, version_id, ai_run_id, findings jsonb, summary_markdown, created_at`
 reports: `id, version_id, kind, status, storage_path, created_at`
+
+### rules_profiles
+Seeded from `data/rules-profiles/*.yaml`. `id text` (`generic-residential`), `version int`, `name`, `extends text null`, `region_code null`, `rules jsonb`, `is_active`, `created_at`; PK(id, version). Immutable once referenced; changes create a new version. `project_versions` records `rules_profile` (`id@version`) used for validation.
 
 ### materials
 Seeded from `data/materials/*.yaml` (read-only in v1): `id text PK, name, category, render jsonb, unit, waste_factor, item_code`.
@@ -148,5 +155,5 @@ v1 (generation) ── v2 (kitchen wider) ── v4 (skylight)       ← project
 ## 7. Migrations & seeds
 
 - Alembic autogenerate is a starting point only — every migration is reviewed by hand.
-- Seeds (`make seed`): material library, default cost catalog(s), demo user + demo project (dev only).
+- Seeds (`pnpm seed`): material library, rules profiles (`generic-residential@1`), default cost catalog (`kz-almaty-demo`, KZT, demo rates), demo user + demo project (dev only).
 - JSONB document migrations (schema_version upgrades) live in code (`building/migrations`), not Alembic.

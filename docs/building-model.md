@@ -1,6 +1,6 @@
 # Building Model
 
-Status: **Accepted (v0.1)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
+Status: **Accepted (v0.2)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
 
 There are **two** schemas, deliberately separated:
 
@@ -146,7 +146,7 @@ The product requirement: *every object has UUID, type, dimensions, position, rot
   "id": "uuid",
   "type": "wall",                     // discriminator
   "name": "Exterior wall S-1",
-  "layer": "architecture",            // architecture | structure | plumbing | electrical | hvac | site
+  "layer": "architecture",            // architecture | structure | furniture | plumbing | electrical | hvac | site
   "level_id": "uuid" | null,          // null for site elements / multi-level (e.g. stair core ref)
   "position": { "x": 0, "y": 0, "z": 0 },      // local anchor; meaning defined per type (below)
   "rotation": { "x": 0, "y": 0, "z": 0 },      // radians, XYZ Euler; most elements use only z (yaw)
@@ -182,7 +182,7 @@ The product requirement: *every object has UUID, type, dimensions, position, rot
 | `fixture` | plumbing / electrical | insertion point | bounding box | `fixture_kind` (wc, basin, shower, bathtub, kitchen_sink, outlet, switch, light, …), catalog id |
 | `equipment` | plumbing / electrical / hvac | insertion point | bounding box | `equipment_kind` (water_heater, heat_pump, ac_indoor, ac_outdoor, distribution_board, …) |
 | `terminal` | hvac | insertion point | `width, depth` | diffuser/grille |
-| `furniture` | architecture | insertion point | bounding box | optional, visual only, excluded from cost by default |
+| `furniture` | furniture | insertion point (base center) | `width, depth, height` | `furniture_kind` (bed, sofa, dining_table, chair, wardrobe, kitchen_counter, kitchen_island, desk, car, …); visual only, excluded from cost by default |
 
 Wall derived geometry (not stored, computed by helpers used by both Python & TS):
 `start = position`, `end = position + length·(cos θ, sin θ)`, `θ = rotation.z`.
@@ -261,7 +261,7 @@ Each operation also records its **inverse** for undo within a draft. Batches tha
 
 ## 6. Discipline layers & materials
 
-- Layers: `architecture, structure, plumbing, electrical, hvac, site`. Exactly one per element.
+- Layers: `architecture, structure, furniture, plumbing, electrical, hvac, site`. Exactly one per element.
 - Materials are referenced by id into the **material library** (`data/materials/*.yaml`):
 
 ```yaml
@@ -291,8 +291,76 @@ Each generated element gets a `semantic_key` (e.g. `room:bedroom_master:0`, `wal
 
 - `schema_version` follows semver. Additive optional fields → minor. Anything else → major with a migration function in `building/migrations/` (`v1_to_v2(doc: dict) -> dict`).
 - Stored documents are upgraded on read; tests keep one fixture per historical version.
-- After changing Pydantic models: `make schema` regenerates `packages/schema` (JSON Schema, TS types, Zod). CI fails on drift.
+- After changing Pydantic models: `pnpm schema` regenerates `packages/schema` (JSON Schema, TS types, Zod). CI fails on drift.
 
 ## 9. IFC alignment (future)
 
 Types map cleanly to IFC: wall→IfcWall, room→IfcSpace, door→IfcDoor, window→IfcWindow, slab→IfcSlab, pipe_segment→IfcPipeSegment, duct_segment→IfcDuctSegment, system→IfcDistributionSystem, level→IfcBuildingStorey. We don't implement export now, but we avoid modeling choices that would prevent it.
+
+---
+
+## 10. BuildingRulesProfile (configurable conceptual rules)
+
+Dimensional rules are **data, not code**. The layout engine and validators read every minimum/maximum from the active `BuildingRulesProfile`; no dimensional constant is hard-coded in business logic.
+
+> Rules profiles support **conceptual validation only**. They are not a statement of compliance with any building code, including Kazakhstan's (SN/SP RK). BuildAI 3D does not replace licensed architectural, structural, MEP or regulatory review.
+
+- Code: `apps/api/app/modules/rules/` (pure domain module; Pydantic schema + evaluator).
+- Data: `data/rules-profiles/*.yaml`, seeded into the DB (`rules_profiles` table); immutable once used by a version.
+- Each project has a `rules_profile_id` (default `generic-residential@1`). Each version records which profile + version validated it.
+- Regional profiles (e.g. `kz-residential`) are added later as new YAML files that `extends` the generic profile and override values.
+
+```yaml
+id: generic-residential
+version: 1
+name: Generic residential (conceptual)
+extends: null
+disclaimer: Conceptual rules only. Not a building-code compliance check.
+units: m
+rooms:                      # per room type; unspecified types fall back to "default"
+  default:      { min_area_m2: 4.0,  min_width_m: 1.5 }
+  bedroom:      { min_area_m2: 9.0,  min_width_m: 2.7, requires_window: true }
+  bedroom_master: { min_area_m2: 12.0, min_width_m: 3.0, requires_window: true }
+  living:       { min_area_m2: 16.0, min_width_m: 3.6, requires_window: true }
+  kitchen:      { min_area_m2: 6.0,  min_width_m: 2.2, requires_window: true }
+  open_kitchen_living: { min_area_m2: 25.0, min_width_m: 4.0, requires_window: true }
+  bathroom:     { min_area_m2: 3.5,  min_width_m: 1.6 }
+  wc:           { min_area_m2: 1.2,  min_width_m: 0.9 }
+  corridor:     { min_area_m2: 0.0,  min_width_m: 1.0 }
+  garage:       { min_area_m2: 18.0, min_width_m: 3.0, per_car_area_m2: 18.0 }
+ceiling:
+  min_clear_height_m: 2.5           # habitable rooms
+  min_clear_height_service_m: 2.2   # storage, garage, wc, corridor
+corridors:
+  min_width_m: 1.0
+  min_width_accessible_m: 1.2
+doors:
+  entrance:  { min_width_m: 0.9,  min_height_m: 2.1 }
+  interior:  { min_width_m: 0.8,  min_height_m: 2.0 }
+  bathroom:  { min_width_m: 0.7,  min_height_m: 2.0 }
+  garage:    { min_width_per_car_m: 2.5, min_height_m: 2.1 }
+windows:
+  min_glazing_to_floor_ratio: 0.125  # habitable rooms (1:8)
+  min_sill_height_m: 0.0             # panoramic allowed
+  guard_required_below_sill_m: 0.9   # upper floors: sills lower than this need a guard/railing
+  min_width_m: 0.6
+  min_height_m: 0.6
+stairs:
+  min_width_m: 0.9
+  riser_m: { min: 0.15, max: 0.19 }
+  tread_m: { min: 0.25, max: 0.32 }
+  comfort_rule: { formula: "2R+T", min: 0.60, max: 0.65 }
+  min_headroom_m: 2.0
+  max_risers_per_flight: 16
+  landing_min_depth_m: 0.9
+railings:
+  min_height_m: 0.9
+  balcony_min_height_m: 1.0
+accessibility:                       # basic geometry checks, reported as warnings
+  step_free_entrance: warning
+  turning_circle_diameter_m: 1.5     # checked in one ground-floor bathroom when enabled
+  accessible_door_clear_width_m: 0.85
+  enabled: false
+```
+
+Rule evaluation output uses the standard issue shape `{ severity, code, path, message, rule_ref }` where `rule_ref` = `generic-residential@1:stairs.riser_m` so every warning is traceable to the exact rule.
