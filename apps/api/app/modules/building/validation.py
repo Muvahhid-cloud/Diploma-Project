@@ -35,6 +35,7 @@ from app.modules.building.geometry import (
     to_absolute,
     wall_axis,
 )
+from app.modules.building.geometry_checks import check_geometry
 from app.modules.building.issues import Issue
 from app.modules.building.model import BuildingModel, Level
 from app.modules.building.primitives import EPS
@@ -141,71 +142,6 @@ class _Checker:
                         self.path(el.id, suffix),
                         f"{el.name}: unknown material {mid!r}",
                         el.id,
-                    )
-
-    def walls_and_openings(self) -> None:
-        openings: dict[uuid.UUID, list[Door | Window]] = defaultdict(list)
-        for el in self.model.elements:
-            if isinstance(el, Wall):
-                lvl = self.levels.get(el.level_id) if el.level_id else None
-                if lvl and el.dimensions.height > lvl.height + EPS:
-                    self.add(
-                        "error",
-                        "WALL_TOO_TALL",
-                        self.path(el.id, "/dimensions/height"),
-                        f"{el.name} is taller than its level",
-                        el.id,
-                    )
-            if not isinstance(el, Door | Window):
-                continue
-            hosts = [r for r in el.relationships if r.kind == RelationshipKind.HOSTED_BY]
-            host = self.by_id.get(hosts[0].target_id) if len(hosts) == 1 else None
-            if not isinstance(host, Wall):
-                self.add(
-                    "error",
-                    "OPENING_HOST",
-                    self.path(el.id, "/relationships"),
-                    f"{el.name} must be hosted by exactly one wall",
-                    el.id,
-                )
-                continue
-            if host.level_id != el.level_id:
-                self.add(
-                    "error",
-                    "OPENING_LEVEL",
-                    self.path(el.id, "/level_id"),
-                    f"{el.name} is not on its host wall's level",
-                    el.id,
-                )
-            x, z = el.position.x, el.position.z
-            w, h = el.dimensions.width, el.dimensions.height
-            if x < -EPS or x + w > host.dimensions.length + EPS or z < -EPS:
-                self.add(
-                    "error",
-                    "OPENING_OUTSIDE_WALL",
-                    self.path(el.id, "/position"),
-                    f"{el.name} extends beyond {host.name} along its length",
-                    el.id,
-                )
-            if z + h > host.dimensions.height + EPS:
-                self.add(
-                    "error",
-                    "OPENING_TOO_TALL",
-                    self.path(el.id, "/dimensions/height"),
-                    f"{el.name} is taller than {host.name}",
-                    el.id,
-                )
-            openings[host.id].append(el)
-        for wall_id, items in openings.items():
-            items.sort(key=lambda o: (o.position.x, str(o.id)))
-            for a, b in itertools.pairwise(items):
-                if a.position.x + a.dimensions.width > b.position.x + EPS:
-                    self.add(
-                        "error",
-                        "OPENINGS_OVERLAP",
-                        self.path(b.id, "/position"),
-                        f"{a.name} and {b.name} overlap in {self.by_id[wall_id].name}",
-                        b.id,
                     )
 
     def polygons(self) -> None:
@@ -549,12 +485,11 @@ def validate_model(
     checker.ids()
     checker.references()
     checker.materials()
-    checker.walls_and_openings()
     checker.polygons()
     checker.stairs()
     checker.railings()
     checker.reachability()
-    return checker.issues + check_types(model, checker.material_ids)
+    return checker.issues + check_geometry(model) + check_types(model, checker.material_ids)
 
 
 Point2 = tuple[float, float]

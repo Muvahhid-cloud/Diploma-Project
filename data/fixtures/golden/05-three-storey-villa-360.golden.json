@@ -1,14 +1,14 @@
 {
-  "engine_version": "layout@1.1.0",
+  "engine_version": "layout@1.2.0",
   "seed": 0,
   "footprint_m": [
-    9.8,
+    10.0,
     12.25
   ],
   "summary": {
     "storeys": 3,
-    "gross_floor_area_m2": 360.2,
-    "net_floor_area_m2": 276.0,
+    "gross_floor_area_m2": 367.5,
+    "net_floor_area_m2": 279.5,
     "rooms": 17,
     "bedrooms": 5,
     "bathrooms": 4,
@@ -37,13 +37,13 @@
       "level": 0,
       "key": "room:corridor_0",
       "type": "corridor",
-      "area_m2": 11.76
+      "area_m2": 12.0
     },
     {
       "level": 0,
       "key": "room:dining",
       "type": "dining",
-      "area_m2": 16.09
+      "area_m2": 16.38
     },
     {
       "level": 0,
@@ -55,7 +55,7 @@
       "level": 0,
       "key": "room:hall_0",
       "type": "entrance",
-      "area_m2": 23.92
+      "area_m2": 24.96
     },
     {
       "level": 0,
@@ -73,13 +73,13 @@
       "level": 0,
       "key": "room:living",
       "type": "living",
-      "area_m2": 37.99
+      "area_m2": 38.87
     },
     {
       "level": 0,
       "key": "room:terrace",
       "type": "terrace",
-      "area_m2": 21.15
+      "area_m2": 21.6
     },
     {
       "level": 0,
@@ -97,13 +97,13 @@
       "level": 1,
       "key": "room:bedroom_1",
       "type": "bedroom",
-      "area_m2": 19.89
+      "area_m2": 20.47
     },
     {
       "level": 1,
       "key": "room:bedroom_2",
       "type": "bedroom",
-      "area_m2": 20.18
+      "area_m2": 20.47
     },
     {
       "level": 1,
@@ -115,13 +115,13 @@
       "level": 1,
       "key": "room:corridor_1",
       "type": "corridor",
-      "area_m2": 11.76
+      "area_m2": 12.0
     },
     {
       "level": 1,
       "key": "room:stair_1",
       "type": "staircase",
-      "area_m2": 6.24
+      "area_m2": 6.76
     },
     {
       "level": 1,
@@ -133,7 +133,7 @@
       "level": 1,
       "key": "room:study",
       "type": "study",
-      "area_m2": 17.26
+      "area_m2": 17.55
     },
     {
       "level": 2,
@@ -163,13 +163,13 @@
       "level": 2,
       "key": "room:corridor_2",
       "type": "corridor",
-      "area_m2": 11.76
+      "area_m2": 12.0
     },
     {
       "level": 2,
       "key": "room:master_bedroom",
       "type": "bedroom",
-      "area_m2": 46.25
+      "area_m2": 47.42
     },
     {
       "level": 2,
@@ -187,7 +187,7 @@
       "level": 2,
       "key": "room:stair_2",
       "type": "staircase",
-      "area_m2": 7.89
+      "area_m2": 8.55
     }
   ],
   "warnings": [
@@ -198,6 +198,6 @@
     "LAYOUT_AREA_DEVIATION",
     "LAYOUT_AREA_DEVIATION"
   ],
-  "model_sha256": "55acd4192cad7e3ef0ca0d6b7b032b32e21a170c0471a6f343beca36cfd378c0",
-  "geometry_sha256": "0b634f15e53efbda2c01bbfbce11cf92b0e95ef70d75452d229394f06c6629cb"
+  "model_sha256": "48df9eb2cdb57f109258c388dd57f7762cfd4cdbed96cfa13e78c6866ceae48f",
+  "geometry_sha256": "7f8b01eec198bf312dc450b6fa411e01977ff0c86c6022235e26cd1861759a84"
 }

@@ -129,6 +129,15 @@ Local environment notes (dev machine is Windows): `uv` may only be available as 
 - K2 types: `buildai-generic-types@1` stays `draft` until a person reviews it; it must keep reproducing `LayoutConfig` exactly (test). Never add types derived from unapproved knowledge (e.g. the GOST window table) as usable records. New layout roles go into `building/types.py TYPE_ROLES` and every role mapping.
 - Stored models are read only through `building.migrations.load_model` (upgrade-on-read; never rewrite stored rows). A schema change keeps `geometry_sha256` in the golden files unchanged unless geometry is meant to change.
 
+## Geometry notes (Phase 3.5 K2.5)
+
+- Design: `docs/building-model.md` §4.1 (geometric invariants) and `docs/3d-engine.md` §16.7 (constraint-aware generation). Geometric invariants, knowledge, rules and design intent stay separate: `building/constraints.py` holds geometric constraints only — never a dimensional minimum/maximum (rules profile) and never a knowledge item.
+- Every geometric check has a catalog entry (`CONSTRAINTS`: id, code, severity, statement) and a row in building-model.md §4.1 (a test keeps them in sync). Findings carry `constraint`, `related_ids`, `measure`; checks never modify the model.
+- Openings stay host-relative (`hosted_by`, `position.x` offset, `position.z` sill). Opening placement in the layout engine and opening validation use the same `building/hosting.py` arithmetic — keep it that way.
+- Coordination axes are derived from walls (`building/axes.py`), not stored.
+- Local constraints in the search must not change the seeding of other candidates: skip inside the loop, never drop skeletons from the list (`sk_index` seeds the RNG).
+- Tolerances: `EPS` for stored coordinates, `DERIVED_TOLERANCE` for derived heights, `OVERLAP_AREA_TOLERANCE` for polygon contact (`building/geometry.py`); don't invent new ones ad hoc.
+
 ## Working agreements for Claude
 
 - Read the relevant `/docs` file before changing a subsystem; update docs when behavior or decisions change.

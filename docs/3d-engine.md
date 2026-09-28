@@ -238,7 +238,7 @@ generate_layout(spec, rules_profile, *, id_namespace, seed=0, config=DEFAULT_CON
 # raises LayoutError(code="LAYOUT_INFEASIBLE" | "LAYOUT_INVALID", message, issues)
 ```
 
-Scope v1: rectilinear plans, 1–3 storeys, one rectangular house footprint stacked on every storey, plus an attached single-storey garage (L-shaped ground floor), cantilevered balconies and ground-floor terraces. Every minimum comes from the active `BuildingRulesProfile` ([building-model.md](building-model.md) §10); construction defaults (wall/slab thicknesses, preferred door/window sizes, default room areas, search parameters) live in `LayoutConfig` (`config.py`) and are versioned with `ENGINE_VERSION` (`layout@1.0.0`).
+Scope v1: rectilinear plans, 1–3 storeys, one rectangular house footprint stacked on every storey, plus an attached single-storey garage (L-shaped ground floor), cantilevered balconies and ground-floor terraces. Every minimum comes from the active `BuildingRulesProfile` ([building-model.md](building-model.md) §10); construction defaults (wall/slab thicknesses, preferred door/window sizes, default room areas, search parameters) live in `LayoutConfig` (`config.py`) and are versioned with `ENGINE_VERSION` (now `layout@1.2.0`; constraint-aware generation §16.7).
 
 ### 16.1 Plan scheme
 
@@ -287,7 +287,7 @@ Stair core: `lanes = storeys − 1`, one straight flight per lane (`design_stair
                             upper sills >= guard height), slabs (+ stair holes, balcony, terrace),
                             stairs + railings, roofs (flat/gable/hip + flat garage roof), relationships,
                             furniture (furnish.py: per-room templates clear of door zones)
-10. Validate   engine.py    model invariants + reachability; the best-scoring candidate that validates
+10. Validate   engine.py    model invariants incl. geometric checks (K2.5) + reachability; the best-scoring candidate that validates
                             wins (up to 6 are built)
 ```
 
@@ -312,6 +312,27 @@ Determinism: the only randomness is `random.Random(f"{seed}:{skeleton}:{variant}
 - **Attachment**: `build.attach_types` sets `type_ref` and the type's fixed materials, and copies the used types and their assemblies into the model (sorted); rooms and furniture stay untyped. `metadata.generator` names the type pack and mapping.
 - **Determinism and geometry**: with the generic types the effective config equals `LayoutConfig` (tested), so every reference spec generates the same geometry fingerprint typed and untyped (`tests/layout/test_types.py`, also under two `PYTHONHASHSEED`s). The web geometry builders are unchanged (`engine@1`); a web test asserts type metadata never changes the scene hash.
 - `ENGINE_VERSION` is `layout@1.1.0` (models are BuildingModel 1.1.0). The golden files changed only in `engine_version`, the full-model hash and the new fields; every `geometry_sha256` is identical to the pre-K2 baseline.
+
+### 16.7 Constraint-aware generation (layout@1.2.0, Phase 3.5 K2.5)
+
+The engine prefers generating valid geometry to discovering invalid geometry afterwards. The geometric invariants of [building-model.md](building-model.md) §4.1 act at four points, each deterministic:
+
+```
+spec + effective config ─► opening_fit_issues   before the search: the fixed door sizes the building needs fit
+                           (layout/constraints)  the storey's walls, else LAYOUT_INFEASIBLE with a suggestion
+skeleton ────────────────► flights_fit_lanes     in the seeded search: every flight, centred between the faces of
+                           (layout/constraints)  its lane walls, keeps its clearance; impossible skeletons are skipped
+                                                 (in the loop, so the seeds of the other skeletons do not shift)
+opening placement ───────► WallPlan.place        building/hosting.py: inside the segment, `gap` from other openings,
+                                                 clear of wall-junction zones; doors taller than the walls → BuildError
+built candidate ─────────► validate_model        every model invariant incl. the geometric checks; errors or
+                                                 ROOM_UNREACHABLE reject the candidate; the first valid one wins
+```
+
+- **Stair cores on the facade.** A lane is `width + 2·clearance + interior wall` wide — right between interior walls, but a lane on the facade is bounded there by the thicker exterior wall. layout@1.1.0 centred the flight in such a lane regardless, so it cut 5 cm into the exterior wall and ran under the slab edge above (reference specs 05, 06, 09 — and 58 of 130 random specs that generated in a 200-spec probe). `skeletons()` now widens a facade lane by the extra half-thickness (snapped up to the grid) **and grows the footprint by the same amount**, so the rooms keep their widths; the flight is centred between the actual wall faces (`plan.lane_faces`, identical to the lane middle for interior lanes). Gross floor area grows by ≤ 2.1 % in the reference specs (reported like any other deviation when > 5 %). If the plot cannot take the extra width, the skeleton keeps its size and `flights_fit_lanes` rejects it.
+- **Openings** are placed with the same interval arithmetic the validator uses (`hosting.free_intervals`, `hosting.junction_zones`), so the engine cannot choose a position the validator would reject. Junction zones are explicit (the door and window margins used to keep openings out of them implicitly — output unchanged).
+- **Storey height vs door sizes.** Door heights and thicknesses are fixed (by the component type, or by the engine defaults the generic types mirror), so they are never shrunk. layout@1.1.0 failed with `LAYOUT_INVALID` ("engine bug") for storeys below 2.6 m when a 2.4 m sliding door was needed; now a required door that cannot fit is a user-fixable `LAYOUT_INFEASIBLE` (`TYPE_GEOMETRY_MISMATCH`, path `/targets/floor_to_floor_height_m`, suggestion "raise the floor-to-floor height to at least … m"), and the optional garden door is left out with a note. Fixed-size service and stair windows are skipped where they would pass the wall top.
+- **Effect on output.** Only facade-core skeletons changed, so geometry changed only where layout@1.1.0 produced the stair defect: 7 of 10 reference specs keep their `geometry_sha256`; 05, 06 and 09 keep their layout on a 0.1 m (05: 0.2 m, two lanes) wider footprint. ENGINE_VERSION is `layout@1.2.0`.
 
 ### 16.5 Limitations (layout@1.0.0)
 

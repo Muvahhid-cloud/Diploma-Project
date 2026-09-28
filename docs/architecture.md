@@ -129,7 +129,7 @@ apps/api/
         ├── auth/                # users, JWT, refresh tokens
         ├── projects/            # project CRUD, membership
         ├── versions/            # versions, drafts, diff/compare
-        ├── building/            # ★ DOMAIN: spec + model schemas, validation, operations
+        ├── building/            # ★ DOMAIN: spec + model schemas, validation (incl. geometric checks, K2.5), operations
         ├── rules/               # ★ DOMAIN: BuildingRulesProfile schema + evaluator (configurable, regional)
         ├── catalog/             # ★ DOMAIN: architectural knowledge packs (loader, registry, integrity, lock); read-only, not consumed in K1
         ├── layout/              # ★ DOMAIN: spec → architectural model

@@ -881,6 +881,35 @@
             }
           ],
           "default": null
+        },
+        "constraint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "related_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "measure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Measure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -890,9 +919,44 @@
         "message",
         "suggestion",
         "rule_ref",
-        "element_id"
+        "element_id",
+        "constraint",
+        "related_ids",
+        "measure"
       ],
       "title": "Issue",
+      "type": "object"
+    },
+    "Measure": {
+      "additionalProperties": false,
+      "description": "A measured quantity and the limit it violates (SI units).",
+      "properties": {
+        "quantity": {
+          "maxLength": 80,
+          "minLength": 1,
+          "type": "string"
+        },
+        "actual": {
+          "type": "number"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "unit": {
+          "enum": [
+            "m",
+            "m2"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "quantity",
+        "actual",
+        "limit",
+        "unit"
+      ],
+      "title": "Measure",
       "type": "object"
     },
     "ModelSummary": {

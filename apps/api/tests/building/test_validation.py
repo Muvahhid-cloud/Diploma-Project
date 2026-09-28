@@ -59,7 +59,7 @@ def test_overlapping_openings(model: BuildingModel) -> None:
 
 
 def test_opening_must_have_a_wall_host(model: BuildingModel) -> None:
-    assert "OPENING_HOST" in _codes(with_element(model, "window:ent", relationships=[]))
+    assert "HOST_NOT_FOUND" in _codes(with_element(model, "window:ent", relationships=[]))
 
 
 def test_overlapping_rooms(model: BuildingModel) -> None:

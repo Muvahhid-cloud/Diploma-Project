@@ -119,11 +119,11 @@ Implemented in `apps/api/app/modules/building/{primitives,enums,elements,types,m
   "id": "uuid",                       // the "building" object id
   "building": { "name": "Demo family house", "building_type": "single_family_house", "description": "…" },
   "units": "m",
-  "engine_version": "layout@1.1.0",   // "fixture@1" for the hand-authored demo
+  "engine_version": "layout@1.2.0",   // "fixture@1" for the hand-authored demo
   "seed": 0,                          // layout seed (null for fixtures)
   "levels": [ Level, ... ],           // the "floor" objects
   "elements": [ Element, ... ],       // discriminated union on "type"
-  "metadata": { "source": "fixture" | "layout" | "operations", "generator": "layout@1.1.0 · rules generic-residential@1" },
+  "metadata": { "source": "fixture" | "layout" | "operations", "generator": "layout@1.2.0 · rules generic-residential@1" },
   "types": [ TypeSnapshot, ... ],     // 1.1.0: every type an element refers to (sorted by id; §3.5)
   "assemblies": [ AssemblySnapshot, ... ]  // 1.1.0: every assembly a type or room refers to
 }
@@ -231,8 +231,8 @@ Errors (model rejected):
 1. Unique ids across model, levels and elements; unique semantic keys; level indices 0..n-1.
 2. Every `level_id` and relationship target exists.
 3. Every material id (element, finishes, frames, floor finishes) exists in the material library (when the library is supplied).
-4. Doors/windows: exactly one `hosted_by` wall on the same level; fully inside the wall (`0 ≤ x`, `x + width ≤ length`, `z + height ≤ wall height`); no overlaps on the same wall.
-5. Wall height ≤ level height.
+4. Doors/windows and walls: the geometric invariants of §4.1 (hosting, placement inside the wall and clear of junctions, no overlaps, …).
+5. Wall height ≤ level height (`WALL_TOO_TALL`, now in §4.1).
 6. Room boundaries: CCW, rectilinear, simple; `area`/`perimeter` match the boundary; rooms on a level do not overlap.
 7. Slabs: CCW simple outline, holes inside, `area` = outline − holes. Pitched roofs need a rectangular outline.
 8. Stairs: `risers × riser_height ≈ rise_total` and `(risers − 1) × tread_depth ≈ run_length` (±0.5 mm rounding per riser); start on `from_level`, reach the next level; `rise_total` = level difference.
@@ -244,9 +244,74 @@ Errors (model rejected):
 
 Warnings (reported, model accepted): a type or assembly snapshot nothing uses (`SNAPSHOT_UNUSED`); room not fully supported by a slab; habitable room (living, dining, kitchen, bedroom, study) without a window or glazed door on its own boundary; furniture outside every room; **room not reachable from the entrance** (`ROOM_UNREACHABLE`: graph over doors — `connects` computed geometrically —, open boundaries where no wall axis runs along a shared room edge for ≥ 0.6 m, and stairs linking the room at the bottom to the room at the top landing; start = rooms with an `entrance` door, else any exterior door); no exterior door at all (`NO_ENTRANCE`).
 
-The layout engine rejects its own candidates on any error **or** `ROOM_UNREACHABLE`, so generated models always satisfy them; Hypothesis properties over random specs check this (`tests/layout/test_invariants.py`). Not yet checked: stair headroom, wet-room fixture placement.
+The layout engine rejects its own candidates on any error **or** `ROOM_UNREACHABLE`, so generated models always satisfy them; Hypothesis properties over random specs check this (`tests/layout/test_invariants.py`). Not yet checked: stair headroom (a rules-profile value, `stairs.min_headroom_m`, not evaluated yet), wet-room fixture placement.
 
 Rules findings (conceptual, per rules profile) are a separate evaluator, `rules/model_checks.py` (§10); they are warnings with a `rule_ref` and never invalidate a model.
+
+### 4.1 Geometric invariants (Phase 3.5 K2.5)
+
+Code: `building/geometry_checks.py` (checker), `building/constraints.py` (catalog), `building/geometry.py` (plan primitives and tolerances), `building/hosting.py` (host-relative opening arithmetic, shared with the layout engine), `building/axes.py` (derived coordination axes). `validate_model` runs the checker, so its findings reach the layout engine (candidate rejection), the generation pipeline (last line of defence) and every stored version's report (computed on read — no database change).
+
+Four things stay separate:
+
+| | What | Where | Effect |
+|---|---|---|---|
+| A. Geometric invariants | mathematical/structural consistency of the model itself | `building/constraints.py`, this section | errors reject a model/candidate |
+| B. Architectural knowledge | descriptive, source-attributed | `catalog/`, `data/knowledge` ([knowledge.md](knowledge.md)) | none at runtime unless **approved** — nothing is approved, so K2.5 consumes none |
+| C. Project/regional rules | enforceable minimums/maximums | rules profiles (§10) | warnings with a `rule_ref` |
+| D. Design intent | what the user asked for | `BuildingSpecification` (§2) | deviations reported by the engine |
+
+A geometric constraint never contains a dimensional requirement (no minimum pier width, headroom or clearance — those belong in a rules profile); it only states what must hold for the geometry to be coherent.
+
+**Finding shape.** Every geometric finding is an `Issue` (the shared shape) with `code`, `severity`, a JSON-pointer `path`, `element_id` (where), `message` (English fallback) and three additive fields: `constraint` (which constraint was violated — a catalog id), `related_ids` (the other elements involved: host wall, the other opening, supporting wall, slab …) and `measure` (why, in numbers: `{quantity, actual, limit, unit}`), so a UI or report can explain a finding without parsing the message. Findings never modify the model.
+
+**Tolerances** (`building/geometry.py`): stored coordinates are rounded to 1 mm, so containment and overlap of stored values compare with `EPS` = 0.1 mm (a real violation is ≥ 1 mm); values derived from several rounded numbers (a roof underside via tan(pitch), sums of elevations) use `DERIVED_TOLERANCE` = 1.5 mm; polygon intersections below `OVERLAP_AREA_TOLERANCE` = 0.001 m² are contact; angles compare with 1e-5 rad. Two probes ask "which room is there": 0.01 m off a wall axis beside a door and 0.1 m beyond each end of a flight — sampling distances, not requirements. Touching (zero-length overlap) is always valid.
+
+| Constraint | Code | Severity | Must hold |
+|---|---|---|---|
+| `host.exists` | `HOST_NOT_FOUND` | error | A door/window has a `hosted_by` relationship to an existing element |
+| `host.unique` | `HOST_AMBIGUOUS` | error | … exactly one |
+| `host.is_wall` | `HOST_INCOMPATIBLE` | error | … and it is a wall |
+| `host.same_level` | `OPENING_LEVEL` | error | The opening is on its host's level |
+| `host.local_position` | `INVALID_HOST_POSITION` | error | Host-wall coordinates: `position.y = 0`, no rotation; doors stand on the wall base (`z = 0`) |
+| `opening.within_length` | `OPENING_OUTSIDE_WALL` | error | `0 ≤ offset` and `offset + width ≤ wall length` |
+| `opening.above_base` | `OPENING_OUTSIDE_WALL` | error | sill ≥ 0 |
+| `opening.within_height` | `OPENING_TOO_TALL` | error | `sill + height ≤ wall height` |
+| `opening.clear_of_junctions` | `OPENING_IN_WALL_JUNCTION` | error | The opening does not reach into the body of a wall that joins or crosses its host (L-corner, T-junction, crossing; the zone is the other wall's thickness around the meeting point) |
+| `opening.within_thickness` | `OPENING_THICKER_THAN_WALL` | error | A door leaf is not thicker than its wall |
+| `opening.no_overlap` | `OPENINGS_OVERLAP` | error | Openings in one wall do not overlap along it (every pair is checked) |
+| `wall.within_level_height` | `WALL_TOO_TALL` | error | Wall height ≤ floor-to-floor height |
+| `wall.orientation` | `INVALID_WALL_GEOMETRY` | error | Untilted and axis-aligned (v1 is rectilinear) |
+| `wall.no_overlap` | `WALLS_OVERLAP` | error | Walls on one level and coordination axis do not overlap |
+| `wall.connected` | `WALL_UNCONNECTED` | error | Both ends of an exterior wall meet another wall's body (closed envelope) |
+| `wall.on_slab` | `WALL_NOT_ON_SLAB` | error | A wall's footprint lies on its level's slabs (not over an opening) |
+| `room.enclosed` | `INVALID_ROOM_BOUNDARY` | error | Each edge of an indoor room runs along a wall body, another room (open plan) or a slab opening (stair arrival) |
+| `room.not_crossed` | `ROOM_CROSSED_BY_WALL` | error | No wall axis runs through a room's interior |
+| `room.attached` | `ROOM_DETACHED` | warning | An outdoor room touches a wall or an indoor room |
+| `door.opens_to_rooms` | `DOOR_TO_NOWHERE` | error | A door has a room on at least one side; in an interior wall on both sides |
+| `relationship.kinds` | `RELATIONSHIP_INVALID` | error | A relationship joins the element types its kind allows (§3.4; MEP kinds are reserved) |
+| `relationship.geometry` | `RELATIONSHIP_INCONSISTENT` | error | `bounds`, `adjacent_to`, `connects`, `located_in` are true of the geometry (same level; the wall runs along the room, the rooms share an edge, the door opens into the room, the element is in the room) |
+| `level.stacking` | `LEVEL_ELEVATION_MISMATCH` | error | Level 0 at 0; each level starts where the one below ends |
+| `stair.orientation` | `STAIR_GEOMETRY_INVALID` | error | A flight is untilted and axis-aligned |
+| `stair.in_rooms` | `STAIR_OUTSIDE_ROOMS` | error | The flight lies within the rooms of its starting level |
+| `stair.clear_of_walls` | `STAIR_INTERSECTS_WALL` | error | The flight does not intersect a wall of its starting level |
+| `stair.access` | `STAIR_ACCESS_INVALID` | error | It starts from a room and arrives in a room of the arrival level |
+| `stair.slab_opening` | `STAIR_SLAB_CONFLICT` | error | Where treads rise above the arrival slab's underside, they pass through a slab opening |
+| `slab.no_overlap` | `SLABS_OVERLAP` | error | Slabs of one level do not overlap |
+| `support.slab` | `SLAB_RELATIONSHIP_INVALID` | error | A wall that `supports` a slab lies under it and its top meets the slab's underside |
+| `roof.shape` | `ROOF_GEOMETRY_INVALID` | error | Flat: no pitch; pitched: a pitch and no parapet; untilted |
+| `roof.covers_supports` | `ROOF_FOOTPRINT_INVALID` | error | The outline covers the walls that support the roof |
+| `roof.overhang` | `ROOF_OVERHANG_MISMATCH` | error | The outline extends exactly `overhang` beyond the supporting walls, on every side |
+| `support.roof` | `ROOF_SUPPORT_INVALID` | error | The underside meets the supporting walls' tops (no floating) and never cuts into them |
+| `roof.supported` | `ROOF_UNSUPPORTED` | warning | Some wall supports each roof |
+| `type.fits_host` | `TYPE_GEOMETRY_MISMATCH` | error | The FIXED dimensions of an opening's type (door height, thickness) fit its host wall |
+| `type.fits_storey` | `TYPE_GEOMETRY_MISMATCH` | error | Before generation: the fixed door sizes the building needs (from its types, or the engine defaults the generic types mirror) fit the storey's walls — else `LAYOUT_INFEASIBLE` with path `/targets/floor_to_floor_height_m` and a suggestion |
+
+Compatibility: existing codes keep their names (`OPENING_OUTSIDE_WALL`, `OPENING_TOO_TALL`, `OPENINGS_OVERLAP`, `OPENING_LEVEL`, `WALL_TOO_TALL`, and the §4 codes `ROOMS_OVERLAP`, `ROOM_UNREACHABLE`, `STAIR_LEVELS`, …). The catch-all `OPENING_HOST` is replaced by `HOST_NOT_FOUND` / `HOST_AMBIGUOUS` / `HOST_INCOMPATIBLE`. Findings are computed on read, so no stored data changes; 1.0.0 fixtures and the demo house have no findings. "A valid type is not enough": `type.fits_host` and the placement checks apply to the element as placed — a 2.4 m window type must also find 2.4 m of free wall between junctions and other openings.
+
+**Host-relative representation.** Doors and windows already are host-relative (§3.3): `hosted_by` = host id, `position.x` = offset along the host axis, `width`, `position.z` = sill, `height`. K2.5 keeps this representation (no schema change, no migration): it is exactly `(host_id, offset_along_host, width, sill, height)`, moving a wall moves its openings, and `building/hosting.py` works on it directly. `host.local_position` rejects anything that would make it ambiguous.
+
+**Coordination axes.** Derived, not stored (`building/axes.py`): v1 walls are axis-aligned, so the model's axes are the distinct lines `x = c` / `y = c` of wall axes, building-wide, each with its walls ordered by level. Axes cannot drift from the walls; the checks use them to find collinear overlaps. Persistent grid elements, labelling (the K1 `spds` pack's axis conventions are unreviewed and not consumed) and dimension chains are deferred to drawing output.
 
 ---
 

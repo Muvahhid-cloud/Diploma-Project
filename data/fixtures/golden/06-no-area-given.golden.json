@@ -1,14 +1,14 @@
 {
-  "engine_version": "layout@1.1.0",
+  "engine_version": "layout@1.2.0",
   "seed": 0,
   "footprint_m": [
-    5.7,
+    5.8,
     11.4
   ],
   "summary": {
     "storeys": 2,
-    "gross_floor_area_m2": 130.0,
-    "net_floor_area_m2": 93.8,
+    "gross_floor_area_m2": 132.2,
+    "net_floor_area_m2": 94.8,
     "rooms": 6,
     "bedrooms": 3,
     "bathrooms": 1,
@@ -37,19 +37,19 @@
       "level": 0,
       "key": "room:corridor_0",
       "type": "corridor",
-      "area_m2": 6.84
+      "area_m2": 6.96
     },
     {
       "level": 0,
       "key": "room:hall_0",
       "type": "entrance",
-      "area_m2": 16.66
+      "area_m2": 17.15
     },
     {
       "level": 0,
       "key": "room:kitchen_living",
       "type": "open_kitchen_living",
-      "area_m2": 30.21
+      "area_m2": 30.74
     },
     {
       "level": 0,
@@ -67,13 +67,13 @@
       "level": 1,
       "key": "room:bedroom_1",
       "type": "bedroom",
-      "area_m2": 15.11
+      "area_m2": 15.37
     },
     {
       "level": 1,
       "key": "room:bedroom_2",
       "type": "bedroom",
-      "area_m2": 15.11
+      "area_m2": 15.37
     },
     {
       "level": 1,
@@ -85,10 +85,10 @@
       "level": 1,
       "key": "room:corridor_1",
       "type": "corridor",
-      "area_m2": 6.84
+      "area_m2": 6.96
     }
   ],
   "warnings": [],
-  "model_sha256": "6d389f23ddb73adfae966f7785adfd1ccfa1a8dc37da7ffb8a168b7032692772",
-  "geometry_sha256": "d73189ec690e081ca99702bc977a22dcafb5a06f5eb55bb72d70357a14e11e4e"
+  "model_sha256": "fd9772972ff72ef2184b8ff44137676e65b9e5ffc7a3da0da274b654e9e8e984",
+  "geometry_sha256": "5e32714e3c1abdf066f0dcc93a91708e25f93e232afa03d2bcc053876704093a"
 }

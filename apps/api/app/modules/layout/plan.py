@@ -215,3 +215,16 @@ class Segment:
             and self.a0 - 1e-4 <= other.a0
             and other.a1 <= self.a1 + 1e-4
         )
+
+
+def lane_faces(
+    sk: Skeleton, flight: int, exterior: float, interior: float
+) -> tuple[float, float, float]:
+    """Wall faces bounding the lane of `flight` and the x of the flight's centre line between
+    them (Phase 3.5 K2.5). A lane on the facade is bounded there by the exterior wall; other
+    lane sides by interior walls. Returns (west face, east face, centre)."""
+    x0, x1 = sk.lane(flight)
+    t0 = exterior if abs(x0) < EPS else interior
+    t1 = exterior if abs(x1 - sk.W) < EPS else interior
+    # (x0 + t0/2 + x1 - t1/2) / 2, written so that a symmetric lane gives exactly its middle.
+    return x0 + t0 / 2, x1 - t1 / 2, (x0 + x1) / 2 + (t0 - t1) / 4

@@ -22,6 +22,7 @@ from typing import Literal
 from app.modules.building.enums import RoomType
 from app.modules.building.specification import BuildingSpecification
 from app.modules.layout.config import LayoutConfig
+from app.modules.layout.constraints import flights_fit_lanes
 from app.modules.layout.plan import (
     Candidate,
     Column,
@@ -862,34 +863,46 @@ def skeletons(inp: SearchInput, config: LayoutConfig, reasons: list[str]) -> lis
                 reasons.append("footprint too narrow for the entrance hall and stair core")
                 continue
             for frac in config.core_positions:
-                gx0 = snap(frac * (width - group), g)
                 sides: tuple[Literal["west", "east"], ...] = ("west", "east")
                 for hall_side in sides:
-                    if hall_side == "west":
-                        hall = (gx0, rnd(gx0 + hall_w))
-                        core_x0 = rnd(gx0 + hall_w)
-                    else:
-                        core_x0 = gx0
-                        hall = (rnd(gx0 + core_w), rnd(gx0 + core_w + hall_w))
                     if lanes == 0 and hall_side == "east":
                         continue
-                    garage_side: Literal["west", "east"] | None = None
-                    if spec.features.garage is not None:
-                        garage_side = "west" if gx0 + group / 2 <= width / 2 else "east"
+                    lane, w_eff = lane_w, width
+                    gx0, hall, core_x0 = _place_group(
+                        width, hall_w, lanes, lane, frac, hall_side, g
+                    )
                     key = (width, depth, ds, gx0, hall_w, 0.0 if hall_side == "west" else 1.0)
                     if key in seen:
                         continue
                     seen.add(key)
+                    if lanes and (core_x0 < EPS or core_x0 + lanes * lane > width - EPS):
+                        # The core is on the facade, so that side of its lanes is the (thicker)
+                        # exterior wall. Widen the lanes, and the footprint by as much, so every
+                        # flight keeps its clearance and the rooms keep their width (K2.5). If
+                        # the plot does not allow it, the skeleton stays as it is and the search
+                        # rejects it (flights_fit_lanes); it is never dropped here, which would
+                        # shift the seeds of the skeletons after it.
+                        wide = snap_up(lane_w + (t_ext - config.interior_wall_thickness) / 2, g)
+                        grown = rnd(width + lanes * (wide - lane_w))
+                        if inp.max_width is None or grown + inp.garage_width <= inp.max_width + EPS:
+                            lane, w_eff = wide, grown
+                            gx0, hall, core_x0 = _place_group(
+                                w_eff, hall_w, lanes, lane, frac, hall_side, g
+                            )
+                    garage_side: Literal["west", "east"] | None = None
+                    if spec.features.garage is not None:
+                        middle = gx0 + (hall_w + lanes * lane) / 2
+                        garage_side = "west" if middle <= w_eff / 2 else "east"
                     out.append(
                         Skeleton(
-                            W=width,
+                            W=w_eff,
                             D=depth,
                             Ds=ds,
                             C=corridor,
                             storeys=storeys,
                             core_x0=core_x0,
                             lanes=lanes,
-                            lane_width=lane_w,
+                            lane_width=lane,
                             hall_x0=hall[0],
                             hall_x1=hall[1],
                             hall_side=hall_side,
@@ -897,6 +910,23 @@ def skeletons(inp: SearchInput, config: LayoutConfig, reasons: list[str]) -> lis
                         )
                     )
     return out
+
+
+def _place_group(
+    width: float,
+    hall_w: float,
+    lanes: int,
+    lane_w: float,
+    frac: float,
+    hall_side: Literal["west", "east"],
+    grid: float,
+) -> tuple[float, tuple[float, float], float]:
+    """Start of the hall + core group, the hall part and the core start at one position."""
+    core_w = lanes * lane_w
+    gx0 = snap(frac * (width - hall_w - core_w), grid)
+    if hall_side == "west":
+        return gx0, (gx0, rnd(gx0 + hall_w)), rnd(gx0 + hall_w)
+    return gx0, (rnd(gx0 + core_w), rnd(gx0 + core_w + hall_w)), gx0
 
 
 def search(inp: SearchInput, config: LayoutConfig, seed: int) -> list[Candidate]:
@@ -914,6 +944,10 @@ def search(inp: SearchInput, config: LayoutConfig, seed: int) -> list[Candidate]
     candidates: list[Candidate] = []
     order = 0
     for sk_index, sk in enumerate(sks):
+        if inp.stair is not None and not flights_fit_lanes(sk, inp.stair, config):
+            # Skipped here, not in skeletons(): sk_index keeps seeding the same variants.
+            reasons.append("the stair core against the facade leaves no room for the flight")
+            continue
         for variant in range(config.variants_per_skeleton):
             # Seeded, local PRNG: the only source of variation (determinism, not security).
             rng = random.Random(f"{seed}:{sk_index}:{variant}")  # noqa: S311

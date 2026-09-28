@@ -7,16 +7,17 @@ import type { Issue, Version } from "@/lib/api/schemas";
 import { useSelectionStore } from "@/stores/selection-store";
 
 /**
- * What the engine reported for this version (deviations from the spec, notes) and the rules
- * findings evaluated on read against the version's rules profile. Nothing is hidden: every
- * departure from the request is listed.
+ * What the engine reported for this version (deviations from the spec, notes), the geometric
+ * checks (Phase 3.5 K2.5: every element fits the geometry around it) and the rules findings,
+ * both evaluated on read. Nothing is hidden: every departure from the request is listed.
  */
 export function ReportPanel({ version, onClose }: { version: Version; onClose: () => void }) {
   const select = useSelectionStore((s) => s.select);
   const report = version.report;
   const deviations = report?.warnings.filter((w) => !w.rule_ref) ?? [];
   const rules = version.issues.filter((i) => i.rule_ref);
-  const model = version.issues.filter((i) => !i.rule_ref);
+  const geometry = version.issues.filter((i) => !i.rule_ref && i.constraint);
+  const model = version.issues.filter((i) => !i.rule_ref && !i.constraint);
   const metrics = report?.metrics ?? {};
   const parsedSpec = buildingSpecificationSchema.safeParse(version.spec);
   const assumptions = parsedSpec.success ? (parsedSpec.data.assumptions ?? []) : [];
@@ -116,6 +117,12 @@ export function ReportPanel({ version, onClose }: { version: Version; onClose: (
           </section>
         )}
         <Group
+          title="Geometry checks"
+          issues={geometry}
+          onSelect={select}
+          empty="None — every opening, wall, room, stair, slab and roof fits the geometry around it."
+        />
+        <Group
           title={`Rules check · ${version.rules_profile}`}
           issues={rules}
           onSelect={select}
@@ -166,9 +173,9 @@ function Group({
               ) : (
                 <span className="text-amber-800 dark:text-amber-300">{issue.message}</span>
               )}
-              {issue.rule_ref && (
+              {(issue.rule_ref ?? issue.constraint) && (
                 <span className="ml-1 font-mono text-[10px] text-neutral-400">
-                  {issue.rule_ref}
+                  {issue.rule_ref ?? issue.constraint}
                 </span>
               )}
             </li>

@@ -13,6 +13,7 @@ still untyped.
 |---|---|---|
 | **K1** Knowledge Foundation | catalog module, provenance, ontology, glossary, drawing profile, region-profile foundation, loader, registry, integrity, lock, first packs | ☑ |
 | K2 Families, Types, Assemblies | family/type/assembly/role-mapping records, generic type pack (draft), resolver, BuildingModel 1.1.0 type snapshots, layout integration | ☑ (awaiting review) |
+| K2.5 Architectural Geometry & Placement | geometric invariants and constraint-aware layout (§8.1); consumes no knowledge | ◐ (branch, awaiting review) |
 | K3 Design Systems | coherent combinations of types, assemblies, roofs, finishes, openings | ☐ |
 | K4 Templates | real building configurations (programme, relationships, circulation, constraints) | ☐ |
 | K5 Knowledge API and Units | read-only catalog API; imperial display/input conversion | ☐ |
@@ -234,6 +235,20 @@ No K3–K6 content (design systems, templates, catalog API, units, structural el
 retrieval layer or vector search, no costing, no prompt or specification changes. K2 changes the
 model schema (1.1.0, upgrade-on-read) and lets the layout engine use an approved type set; with
 the repository's draft pack, generated geometry is unchanged (geometry fingerprints equal).
+
+### 8.1 K2.5 and knowledge
+
+K2.5 (geometric invariants, [building-model.md](building-model.md) §4.1; constraint-aware layout, [3d-engine.md](3d-engine.md) §16.7) is geometry, not knowledge, and **consumes no knowledge item at runtime**: only approved items may be consumed and none is approved. Nothing was converted into a rule or a constraint. Where the book pack describes a related concept, the geometric layer works from the model alone, and the item stays a review candidate for later steps:
+
+| K1 item (status) | Related K2.5 behaviour | Why not consumed |
+|---|---|---|
+| `spds-georgievsky-2004@1:model.axes.definition`, `model.wall_axis_binding`, `core@1` `class.coordination_axis` (extracted) | coordination axes are *derived* from wall axes (`building/axes.py`), not stored or labelled | unreviewed; axis labelling and wall-to-axis binding are SPDS drawing conventions, not global geometry |
+| `model.storey_height`, `model.zero_level` (extracted) | `level.stacking` uses only the model's own `elevation`/`height` | the model already defines both |
+| `model.size_kinds` (extracted) | openings are checked at their modelled size | nominal vs construction sizes need review before they may affect fits |
+| `layout.window_sizes_gost_11214_86`, `layout.door_sizes_gost_24698_81` (needs_verification) | none; `type.fits_host` works on the model's type snapshots | unverified tables; types derived from them stay blocked (K2) |
+| `drawing.symbols.openings`, `drawing.symbols.stairs_ramps`, `drawing.plan.*` (extracted) | none | drawing output, not validation |
+
+K2 types are used as the model carries them: a type's FIXED dimensions are checked against the host they are placed in (`type.fits_host`) and, before generation, against the storey's walls (`type.fits_storey`); defaults (`default_*`) may differ from the element by design and are not constraints.
 
 ## 9. Known limitations
 

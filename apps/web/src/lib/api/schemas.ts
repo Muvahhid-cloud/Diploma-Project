@@ -45,6 +45,19 @@ export const issueSchema = z.object({
   suggestion: z.string().nullable().optional(),
   rule_ref: z.string().nullable().optional(),
   element_id: z.uuid().nullable().optional(),
+  // Geometric findings (Phase 3.5 K2.5): the violated constraint, other elements involved and
+  // the measured value vs. its limit (app/modules/building/{issues,constraints}.py).
+  constraint: z.string().nullable().optional(),
+  related_ids: z.array(z.uuid()).optional(),
+  measure: z
+    .object({
+      quantity: z.string(),
+      actual: z.number(),
+      limit: z.number(),
+      unit: z.enum(["m", "m2"]),
+    })
+    .nullable()
+    .optional(),
 });
 export type Issue = z.infer<typeof issueSchema>;
 

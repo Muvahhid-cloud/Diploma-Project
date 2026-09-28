@@ -7,7 +7,7 @@
     "description": "Two-storey family house of about 280 m² with four bedrooms, three bathrooms, a large living room open to the kitchen, a two-car garage and a balcony on the upper floor."
   },
   "units": "m",
-  "engine_version": "layout@1.1.0",
+  "engine_version": "layout@1.2.0",
   "seed": 0,
   "levels": [
     {
@@ -6021,7 +6021,7 @@
   ],
   "metadata": {
     "source": "layout",
-    "generator": "layout@1.1.0 · rules generic-residential@1"
+    "generator": "layout@1.2.0 · rules generic-residential@1"
   },
   "types": [],
   "assemblies": []

@@ -144,6 +144,7 @@ Goal: ground the AI and the deterministic engines in structured, versioned, sour
 |---|---|---|
 | K1 — Knowledge Foundation | pure `modules/catalog`; provenance/source model; knowledge-item, ontology, glossary, drawing-profile and region-profile schemas; loader, registry, integrity, hash lock; `core@1` pack; Georgievsky 2004 source record and `spds-georgievsky-2004@1` pack (`spds@1` drawing profile); `generic@1` region profile | ☑ 2026-09-28 |
 | K2 — Families, Types, Assemblies | family/type/assembly/role-mapping records + integrity; generic type pack (draft, migrated `LayoutConfig` defaults); gated resolver; rules checks for types; BuildingModel 1.1.0 (`type_ref`, type/assembly snapshots, ceiling ref) with upgrade-on-read; layout `TypeSet`; properties panel type section | ☑ 2026-09-28 (branch, awaiting review) |
+| K2.5 — Architectural Geometry & Placement | geometric invariants (hosting, opening placement, walls, room boundaries vs walls, relationships, levels, stairs vs slabs, roofs vs supports, type fit) with a constraint catalog and machine-readable findings; derived coordination axes; constraint-aware layout (door fit before the search, stair lanes in the search, shared opening placement, validation of every candidate); layout@1.2.0 | ◐ 2026-09-29 (branch `phase-3.5-k2.5-geometry`, awaiting review) |
 | K3 — Design Systems | coherent combinations of types, assemblies, roofs, finishes, openings | ☐ |
 | K4 — Templates | real building configurations (programme, relationships, circulation, structural concept, constraints, layout hints); needs sources beyond the drafting handbook | ☐ |
 | K5 — Knowledge API and Units | read-only catalog API; imperial display/input conversion over SI internals | ☐ |
@@ -170,6 +171,17 @@ Goal: ground the AI and the deterministic engines in structured, versioned, sour
 | Rules separate from types | ☑ types below profile minimums refused with `rule_ref`, never resized |
 | Geometry preserved | ☑ geometry fingerprints of all 10 reference specs unchanged, typed and untyped; web scene hash unchanged |
 | Book-derived types | ☑ none added; a GOST window type stays blocked until its K1 item is approved (tested) |
+
+**K2.5 checklist** (verified 2026-09-29, branch):
+
+| Criterion | Result |
+|---|---|
+| Geometry separate from knowledge, rules and intent | ☑ `building/constraints.py` catalog; no knowledge consumed; no dimensional requirement added; rules untouched |
+| Findings: what / where / why / which constraint | ☑ `Issue.constraint`, `related_ids`, `measure` (additive); computed on read; report panel group |
+| Constraint-aware generation | ☑ door fit before the search, stair-lane constraint in the search, shared placement arithmetic, every candidate validated |
+| Defects found in layout@1.1.0 | ☑ fixed: stair flights cut into facade walls (reference specs 05, 06, 09); storeys < 2.6 m with sliding doors failed as LAYOUT_INVALID |
+| Geometry regression | ☑ 7/10 reference fingerprints unchanged; 05/06/09 changed deliberately; typed = untyped; demo and 1.0.0 fixtures valid |
+| Determinism | ☑ same input ⇒ same model; two `PYTHONHASHSEED`s; seeds of unaffected skeletons unchanged |
 
 ## Phase 4 — Quantities & preliminary cost ☐
 - Material library (YAML → DB); item-code vocabulary

@@ -4,9 +4,10 @@ Pure and deterministic (CLAUDE.md rule 5): same spec, profile, seed, config and 
 give a byte-identical model. No I/O, no clock, no global randomness — the only randomness is a
 `random.Random` seeded from `seed` inside the candidate search.
 
-Pipeline (docs/3d-engine.md §16): program -> levels -> skeletons (footprint, bands, core) ->
-per-level zoning and subdivision (seeded variants) -> scoring -> build the best candidates ->
-validate (model invariants incl. reachability) -> first valid candidate wins.
+Pipeline (docs/3d-engine.md §16): program -> opening fit (K2.5) -> levels -> skeletons
+(footprint, bands, core) -> geometric skeleton constraints -> per-level zoning and subdivision
+(seeded variants) -> scoring -> build the best candidates -> validate (model invariants incl.
+geometric checks and reachability) -> first valid candidate wins.
 """
 
 import math
@@ -21,6 +22,7 @@ from app.modules.building.types import TypeSet
 from app.modules.building.validation import errors, validate_model
 from app.modules.layout.build import BuildError, build_model
 from app.modules.layout.config import DEFAULT_CONFIG, LayoutConfig
+from app.modules.layout.constraints import opening_fit_issues
 from app.modules.layout.plan import Candidate, StairDesign, snap
 from app.modules.layout.planner import (
     PlanningError,
@@ -126,6 +128,13 @@ def generate_layout(
     except TypeSetError as exc:
         raise LayoutError("LAYOUT_INVALID", f"The type set cannot be used: {exc}", []) from exc
     program = expand_program(spec, profile, config)
+    # Fixed door sizes that cannot fit the storey's walls make every candidate invalid: say so
+    # up front, as a user-fixable infeasibility (K2.5, layout/constraints.py).
+    misfits = opening_fit_issues(spec, program, profile, config, type_set)
+    if misfits:
+        raise LayoutError(
+            "LAYOUT_INFEASIBLE", "The doors of this building do not fit its walls", misfits
+        )
     storeys = spec.targets.storeys
     try:
         stair = (

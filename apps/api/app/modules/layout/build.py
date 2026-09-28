@@ -59,6 +59,7 @@ from app.modules.building.enums import (
     WindowKind,
 )
 from app.modules.building.geometry import Point, segment_overlap_length
+from app.modules.building.hosting import free_intervals, junction_zones
 from app.modules.building.model import (
     SCHEMA_VERSION,
     BuildingInfo,
@@ -79,7 +80,7 @@ from app.modules.building.types import (
 )
 from app.modules.layout.config import LayoutConfig
 from app.modules.layout.furnish import furnish
-from app.modules.layout.plan import Rect, Region, Segment, rnd
+from app.modules.layout.plan import Rect, Region, Segment, lane_faces, rnd
 from app.modules.layout.program import HABITABLE, WET
 from app.modules.layout.regions import (
     PlanLayout,
@@ -142,6 +143,31 @@ WINDOW_STYLE_ROLE = {
 }
 
 
+def door_sizes(config: LayoutConfig, rules: BuildingRulesProfile) -> dict[str, tuple[float, float]]:
+    """Design size (width, height) of each door role: the configured (or typed) size raised to
+    the rules minimum where the profile has one. `door.garage`: (width per car, height)."""
+    d = rules.doors
+    return {
+        "door.entrance": (
+            max(config.entrance_door[0], d.entrance.min_width_m),
+            max(config.entrance_door[1], d.entrance.min_height_m),
+        ),
+        "door.interior": (
+            max(config.interior_door[0], d.interior.min_width_m),
+            max(config.interior_door[1], d.interior.min_height_m),
+        ),
+        "door.wet_room": (
+            max(config.wet_room_door[0], d.bathroom.min_width_m),
+            max(config.wet_room_door[1], d.bathroom.min_height_m),
+        ),
+        "door.sliding": config.sliding_door,
+        "door.garage": (
+            max(config.garage_door_width_per_car, d.garage.min_width_per_car_m),
+            max(config.garage_door_height, d.garage.min_height_m),
+        ),
+    }
+
+
 @dataclass
 class WallPlan:
     key: str
@@ -156,6 +182,9 @@ class WallPlan:
     right: str
     supports: list[str] = field(default_factory=list)
     occupied: list[tuple[float, float]] = field(default_factory=list)
+    # Where other walls join or cross this one (building.hosting.junction_zones); openings
+    # stay out of them. Set once all walls of the level exist.
+    junctions: list[tuple[float, float]] = field(default_factory=list)
 
     @property
     def length(self) -> float:
@@ -190,23 +219,14 @@ class WallPlan:
         gap: float = 0.15,
     ) -> float | None:
         """Offset of an opening of `width` within `seg` (plan coordinates along the wall),
-        avoiding existing openings. `low`/`high` prefer the smaller/larger plan coordinate."""
+        keeping `gap` from existing openings and clear of wall junctions (the same interval
+        arithmetic the geometric checks validate with). `low`/`high` prefer the smaller/larger
+        plan coordinate."""
         p0, p1 = self.param(seg.a0), self.param(seg.a1)
         lo, hi = max(min(p0, p1) + margin, 0.0), min(max(p0, p1) - margin, self.length)
         if hi - lo < width - 1e-6:
             return None
-        free = [(lo, hi)]
-        for o0, o1 in sorted(self.occupied):
-            nxt = []
-            for f0, f1 in free:
-                if o1 + gap <= f0 or o0 - gap >= f1:
-                    nxt.append((f0, f1))
-                    continue
-                if o0 - gap > f0:
-                    nxt.append((f0, o0 - gap))
-                if o1 + gap < f1:
-                    nxt.append((o1 + gap, f1))
-            free = nxt
+        free = free_intervals(free_intervals([(lo, hi)], self.occupied, gap), self.junctions)
         fits = [(f0, f1) for f0, f1 in free if f1 - f0 >= width - 1e-6]
         if not fits:
             return None
@@ -363,6 +383,19 @@ def _walls(ctx: _Context) -> None:
             )
 
 
+def _junctions(ctx: _Context) -> None:
+    for w in ctx.walls:
+        w.junctions = junction_zones(
+            (w.start, w.end),
+            (-w.thickness / 2, w.thickness / 2),
+            [
+                ((o.start, o.end), o.thickness)
+                for o in ctx.walls
+                if o.level == w.level and o is not w
+            ],
+        )
+
+
 def _wall_on(ctx: _Context, level: int, seg: Segment) -> WallPlan:
     for w in ctx.walls:
         if w.level == level and w.covers(seg):
@@ -423,6 +456,8 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
         role: str | None = None,
     ) -> None:
         wall = _wall_on(ctx, level, seg)
+        if size[1] > ctx.wall_height + 1e-6:  # guaranteed by engine.opening_fit_issues
+            raise BuildError(f"Door {key} ({size[1]} m) is taller than the walls")
         margin = cfg.door_margin if margin is None else margin
         width = size[0]
         offset = wall.place(seg, width, margin=margin, prefer=prefer)
@@ -438,18 +473,8 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
             _Door(key, wall, offset, width, size[1], kind, swing, material, role or DOOR_ROLE[kind])
         )
 
-    entrance = (
-        max(cfg.entrance_door[0], rules.doors.entrance.min_width_m),
-        max(cfg.entrance_door[1], rules.doors.entrance.min_height_m),
-    )
-    interior = (
-        max(cfg.interior_door[0], rules.doors.interior.min_width_m),
-        max(cfg.interior_door[1], rules.doors.interior.min_height_m),
-    )
-    wet = (
-        max(cfg.wet_room_door[0], rules.doors.bathroom.min_width_m),
-        max(cfg.wet_room_door[1], rules.doors.bathroom.min_height_m),
-    )
+    sizes = door_sizes(cfg, rules)
+    entrance, interior, wet = sizes["door.entrance"], sizes["door.interior"], sizes["door.wet_room"]
     core_mid = (sk.group_x0 + sk.group_x1) / 2
 
     # Front door, in the hall part (not in front of the stair lanes).
@@ -532,7 +557,7 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
             margin=0.15,
         )
         cars = ctx.spec.features.garage.cars if ctx.spec.features.garage else 1
-        per_car = max(cfg.garage_door_width_per_car, rules.doors.garage.min_width_per_car_m)
+        per_car, garage_height = sizes["door.garage"]
         width = min(cars * per_car, g.w - 0.3 - 2 * 0.3)
         front = next(w for w in ctx.walls if w.key == "wall:garage:S")
         xs = sorted((front.start[0], front.end[0]))
@@ -540,7 +565,7 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
             "door:garage",
             0,
             Segment("h", 0.0, xs[0], xs[1]),
-            (rnd(width), max(cfg.garage_door_height, rules.doors.garage.min_height_m)),
+            (rnd(width), garage_height),
             DoorKind.GARAGE,
             DoorSwing.SLIDING,
             "metal",
@@ -548,7 +573,7 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
             margin=0.3,
         )
 
-    sliding = cfg.sliding_door
+    sliding = sizes["door.sliding"]
     for att in ctx.plan.attachments:
         host = ctx.plan.levels[att.level].get(att.host)
         span = facade_span(host, att.side, sk) if host is not None else None
@@ -582,7 +607,12 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
             if not spans:
                 continue
             span = spans[0]
-            if span.w >= 3.0:
+            if span.w >= 3.0 and sliding[1] > ctx.wall_height + 1e-6:
+                ctx.plan.notes.append(
+                    f"No garden door: the {sliding[1]:.2f} m sliding door does not fit the "
+                    f"{ctx.wall_height:.2f} m walls of this storey height"
+                )
+            elif span.w >= 3.0:
                 door(
                     "door:garden",
                     0,
@@ -667,6 +697,8 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
     ) -> float:
         wall = _facade_wall(ctx, level, side)
         width = rnd(width)
+        if height <= 0 or sill + height > wall_h + 1e-6:  # no room under the wall top
+            return 0.0
         offset = wall.place(seg, width, margin=cfg.window_margin)
         if offset is None:
             return 0.0
@@ -774,7 +806,8 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
         wall = next(w for w in ctx.walls if w.key == f"wall:garage:{side}")
         w, h, sill = cfg.service_window
         seg = Segment("v", g.x0 if side == "W" else g.x1, g.y0, g.y1)
-        offset = wall.place(seg, w, margin=cfg.window_margin)
+        fits = sill + h <= wall_h + 1e-6
+        offset = wall.place(seg, w, margin=cfg.window_margin) if fits else None
         if offset is not None:
             windows.append(
                 _Window(
@@ -840,6 +873,7 @@ def build_model(
             ctx.room_polys[(level.index, region.key)] = ShapelyPolygon(pts)
             room_abs[(level.index, region.key)] = pts
     _walls(ctx)
+    _junctions(ctx)
     doors, windows = _openings(ctx)
 
     finish = spec.style.interior_finish_level
@@ -1229,8 +1263,8 @@ def _stairs_and_railings(
     rail_h = max(cfg.stair_railing_height, ctx.profile.railings.min_height_m)
     if stair is not None:
         for k in range(sk.storeys - 1):
-            x0, x1 = sk.lane(k)
-            xm = (x0 + x1) / 2
+            # Centred between the lane's wall faces (the lane middle unless it is on the facade).
+            _, _, xm = lane_faces(sk, k, cfg.exterior_wall_thickness, cfg.interior_wall_thickness)
             w = stair.width
             if k % 2 == 0:
                 pos, yaw = (rnd(xm + w / 2), rnd(sk.Ds - stair.run)), HALF_PI

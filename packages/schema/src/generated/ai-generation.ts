@@ -171,6 +171,21 @@ export interface Issue {
   suggestion: string | null;
   rule_ref: string | null;
   element_id: string | null;
+  constraint: string | null;
+  related_ids: string[];
+  measure: Measure | null;
+}
+/**
+ * A measured quantity and the limit it violates (SI units).
+ *
+ * This interface was referenced by `AIGenerationContracts`'s JSON-Schema
+ * via the `definition` "Measure".
+ */
+export interface Measure {
+  quantity: string;
+  actual: number;
+  limit: number;
+  unit: "m" | "m2";
 }
 /**
  * Full generation record: what was asked, what the AI understood, what was built.
