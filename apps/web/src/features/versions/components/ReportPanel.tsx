@@ -1,5 +1,7 @@
 "use client";
 
+import { buildingSpecificationSchema } from "@buildai/schema";
+
 import { DISCLAIMER } from "@/lib/disclaimer";
 import type { Issue, Version } from "@/lib/api/schemas";
 import { useSelectionStore } from "@/stores/selection-store";
@@ -16,6 +18,8 @@ export function ReportPanel({ version, onClose }: { version: Version; onClose: (
   const rules = version.issues.filter((i) => i.rule_ref);
   const model = version.issues.filter((i) => !i.rule_ref);
   const metrics = report?.metrics ?? {};
+  const parsedSpec = buildingSpecificationSchema.safeParse(version.spec);
+  const assumptions = parsedSpec.success ? (parsedSpec.data.assumptions ?? []) : [];
 
   return (
     <div className="flex h-full min-h-0 flex-col text-sm">
@@ -62,12 +66,43 @@ export function ReportPanel({ version, onClose }: { version: Version; onClose: (
           )}
         </dl>
 
+        {version.prompt && (
+          <section className="mt-4">
+            <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+              Request
+            </h3>
+            <p className="rounded-md bg-neutral-50 p-2 text-xs italic text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
+              “{version.prompt}”
+            </p>
+            {report?.generation && (
+              <p className="mt-1 text-[11px] text-neutral-400">
+                Interpreted by{" "}
+                {report.generation.provider === "mock"
+                  ? "the offline mock interpreter (development)"
+                  : `${report.generation.provider} · ${report.generation.model}`}{" "}
+                · prompt {report.generation.prompt_version}
+              </p>
+            )}
+          </section>
+        )}
         <Group
-          title="Differences from the specification"
+          title="Differences from the request"
           issues={deviations}
           onSelect={select}
           empty="None — the layout matches the request."
         />
+        {assumptions.length > 0 && (
+          <section className="mt-4">
+            <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+              Assumptions <span className="tabular-nums">({assumptions.length})</span>
+            </h3>
+            <ul className="list-disc pl-4 text-xs text-neutral-600 dark:text-neutral-300">
+              {assumptions.map((a, i) => (
+                <li key={`${a.path}-${i}`}>{a.reason}</li>
+              ))}
+            </ul>
+          </section>
+        )}
         {report && report.notes.length > 0 && (
           <section className="mt-4">
             <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">

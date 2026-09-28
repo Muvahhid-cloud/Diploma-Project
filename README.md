@@ -16,11 +16,20 @@ Initial market: **Kazakhstan (KZT)**. Costing is currency-agnostic.
 
 ## Status
 
-**Phase 2 complete — deterministic layout engine (spec → model).** Sign up, create a project and fill in a building specification (or start from a reference preset: 280 m² family house, panoramic modern house, garden bungalow, three-storey villa). The layout engine plans the rooms, corridors, stair core, walls, doors, windows, slabs, roof, balconies, terraces, garage and furniture, validates the result and stores it as an immutable project version that opens in the 3D editor. Same spec + seed → same house. Every deviation from the request (room areas, adjacency) and every finding of the conceptual rules profile is listed in the version's design report.
+**Phase 3 complete — AI building generation.** Sign in, describe a house in plain language on the projects page (or in a project's "New design" drawer) and press **Generate 3D building**. The AI turns the description into a validated `BuildingSpecification` (asking for clarification when the request is too vague), the deterministic layout engine plans rooms, corridors, stairs, walls, doors, windows, slabs, roof, balconies, garage and furniture, and the result opens as a new immutable version in the 3D editor — with a summary of what was requested vs. generated, every warning and every assumption. Each generation is kept in the project's history.
 
-The hand-authored Phase 1 demo house is still at http://localhost:3000 (no login) and can be imported into a project as a version.
+The AI runs server-side only. `AI_PROVIDER=mock` (default for development, tests and CI) uses a deterministic offline interpreter; `AI_PROVIDER=anthropic` uses Claude:
 
-Next: **Phase 3** — natural language → AI → BuildingSpecification (the spec pipeline above is what the AI will feed). See [docs/roadmap.md](docs/roadmap.md).
+```bash
+# .env (never commit it)
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=...
+AI_MODEL=claude-opus-5
+```
+
+The specification form and reference presets from Phase 2 are still available ("Specification form" tab), and the hand-authored Phase 1 demo house is at http://localhost:3000 (no login).
+
+Next: **Phase 4** — quantities and preliminary cost. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Prerequisites
 
@@ -62,20 +71,21 @@ Stop the embedded database with `pnpm db:local --stop`. You can instead point `D
 | `pnpm test` | Vitest (web), pytest (API, real PostgreSQL, includes migration checks) |
 | `pnpm check` | lint + typecheck + test |
 | `pnpm migrate` | `alembic upgrade head` |
-| `pnpm schema` | Regenerate `packages/schema` (JSON Schemas, TS types) from the Pydantic BuildingModel and BuildingSpecification |
+| `pnpm schema` | Regenerate `packages/schema` (JSON Schemas, TS types, Zod validators) from the Pydantic BuildingModel, BuildingSpecification and AI generation API contracts |
 | `pnpm fixtures` | Regenerate the demo house fixture from its authoring script |
 | `pnpm golden` | Regenerate the layout-engine golden files for the 10 reference specs (+ the generated-house fixture) — only for deliberate engine changes |
 | `pnpm build:web` | Production Next.js build |
 | `pnpm docker:up` / `docker:down` | Compose stack |
 
-API tests use `TEST_DATABASE_URL` if set (CI); otherwise they start an embedded PostgreSQL automatically.
+API tests use `TEST_DATABASE_URL` if set (CI); otherwise they start an embedded PostgreSQL automatically. They always use the mock AI provider; the live Anthropic test runs only with `RUN_LIVE_AI_TESTS=true` and `ANTHROPIC_API_KEY` set.
 
 ## Repository layout
 
 ```
 apps/web/        Next.js (App Router): editor UI, engine/ (pure-TS geometry), viewer/ (R3F)
 apps/api/        FastAPI modular monolith: auth, projects, versions, generation jobs,
-                 building model + spec + validation, rules profiles, layout engine
+                 building model + spec + validation, rules profiles, layout engine,
+                 AI (providers, prompts, interpreter, NL generation + history)
 packages/schema/ Contracts generated from Pydantic (JSON Schemas, TS types, Zod validators)
 data/            Material library, rules profiles, demo fixture, reference specs + golden files
 docs/            Architecture and design documents
@@ -89,7 +99,7 @@ scripts/         Cross-platform helper scripts
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | System overview, repo/frontend/backend architecture, ADRs, cost/versioning/testing |
 | [docs/building-model.md](docs/building-model.md) | Specification & model schemas, invariants, operations, rules profiles |
-| [docs/ai-pipeline.md](docs/ai-pipeline.md) | AIProvider abstraction, interpret/modify/analyze pipelines, evals |
+| [docs/ai-pipeline.md](docs/ai-pipeline.md) | AI providers (mock, Anthropic), prompts, validation + repair, generation API, persistence, limitations |
 | [docs/3d-engine.md](docs/3d-engine.md) | Coordinates, units, geometry generation, selection, regeneration, performance |
 | [docs/database.md](docs/database.md) | PostgreSQL schema, versioning storage |
 | [docs/roadmap.md](docs/roadmap.md) | Phases, verification checklists, decisions log |

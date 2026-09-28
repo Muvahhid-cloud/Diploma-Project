@@ -6,11 +6,9 @@
 The layout engine is CPU-bound and pure; it runs in a worker thread so the event loop stays free.
 """
 
-import asyncio
 import logging
 import time
 import uuid
-from dataclasses import asdict
 from typing import Any
 
 from fastapi import status
@@ -19,22 +17,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_sessionmaker, utcnow
 from app.core.errors import AppError, ConflictError
+from app.modules.ai.repository import AIGenerationRepository
 from app.modules.auth.models import User
 from app.modules.building.issues import Issue, errors
 from app.modules.building.specification import BuildingSpecification
+from app.modules.generation.pipeline import layout_and_save
 from app.modules.generation.schemas import GenerateRequest, SpecValidationOut
 from app.modules.jobs.models import Job
 from app.modules.jobs.repository import JobRepository
 from app.modules.jobs.runner import job_runner
 from app.modules.layout.config import DEFAULT_CONFIG
-from app.modules.layout.engine import LayoutError, generate_layout
+from app.modules.layout.engine import LayoutError
 from app.modules.projects.models import Project
 from app.modules.projects.service import ProjectService
-from app.modules.rules.model_checks import check_model
 from app.modules.rules.spec_checks import check_spec
-from app.modules.versions.schemas import GenerationReport
-from app.modules.versions.service import VersionService
-from app.shared.data_files import material_ids, rules_profile
+from app.shared.data_files import rules_profile
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +46,13 @@ class SpecInvalidError(AppError):
 
 class GenerationBusyError(ConflictError):
     code = "GENERATION_IN_PROGRESS"
+
+
+async def project_busy(session: AsyncSession, project_id: uuid.UUID) -> bool:
+    """A spec-form job or an AI generation is already running for the project."""
+    if await JobRepository(session).active_for_project(project_id) is not None:
+        return True
+    return await AIGenerationRepository(session).active_for_project(project_id) is not None
 
 
 def _issue_details(issues: list[Issue]) -> list[dict[str, Any]]:
@@ -76,7 +80,7 @@ class GenerationService:
                 details=_issue_details(validation.issues),
             )
         jobs = JobRepository(self.session)
-        if await jobs.active_for_project(project_id) is not None:
+        if await project_busy(self.session, project_id):
             raise GenerationBusyError("A generation is already running for this project")
         job = Job(
             project_id=project_id,
@@ -128,41 +132,27 @@ async def run_generation_job(job_id: uuid.UUID) -> None:
         if project is None or project.deleted_at is not None:
             await _fail(session, job, "PROJECT_NOT_FOUND", "The project no longer exists", [])
             return
-        data_dir = get_settings().data_dir
         project_id = project.id  # plain value: attributes expire on rollback
         spec = BuildingSpecification.model_validate(job.input["spec"])
         seed = int(job.input.get("seed", 0))
         label = job.input.get("label") or f"{spec.name} (seed {seed})"
         spec_warnings = [Issue.model_validate(i) for i in job.input.get("spec_warnings", [])]
         started = time.perf_counter()
-        await _stage(session, job, "layout")
+
+        async def stage(name: str) -> None:
+            await _stage(session, job, name)
+
         try:
-            profile = rules_profile(data_dir, project.rules_profile_id)
-            result = await asyncio.to_thread(
-                generate_layout,
-                spec,
-                profile,
-                id_namespace=project_id,
-                seed=seed,
-                material_ids=material_ids(data_dir),
-            )
-            await _stage(session, job, "checking")
-            findings = check_model(result.model, profile)
-            report = GenerationReport(
-                warnings=spec_warnings + result.warnings + findings,
-                notes=result.notes,
-                metrics=asdict(result.metrics) if result.metrics else {},
-            )
-            await _stage(session, job, "saving")
-            version = await VersionService(session).create(
+            result = await layout_and_save(
+                session,
                 project,
                 user,
-                model=result.model,
                 spec=spec,
-                source="generation",
+                seed=seed,
                 label=label,
-                rules_profile_ref=profile.ref,
-                report=report,
+                source="generation",
+                spec_warnings=spec_warnings,
+                on_stage=stage,
             )
         except LayoutError as exc:
             logger.info(
@@ -182,6 +172,7 @@ async def run_generation_job(job_id: uuid.UUID) -> None:
                 session, job, "INTERNAL_ERROR", "Generation failed because of a server error", []
             )
             return
+        version, metrics = result.version, result.layout.metrics
         job.status = "succeeded"
         job.stage = "done"
         job.progress = 1.0
@@ -190,7 +181,7 @@ async def run_generation_job(job_id: uuid.UUID) -> None:
             "version_id": str(version.id),
             "version_number": version.number,
             "summary": version.summary,
-            "warnings": len(report.warnings),
+            "warnings": len(result.report.warnings),
         }
         await session.commit()
         logger.info(
@@ -199,5 +190,5 @@ async def run_generation_job(job_id: uuid.UUID) -> None:
             project_id,
             version.number,
             (time.perf_counter() - started) * 1000,
-            result.metrics.candidates_evaluated if result.metrics else "?",
+            metrics.candidates_evaluated if metrics else "?",
         )

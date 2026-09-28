@@ -16,6 +16,7 @@ const targets = [
     out: "building-specification.ts",
     name: "BuildingSpecification",
   },
+  { schema: "ai-generation.schema.json", out: "ai-generation.ts", name: "AIGenerationContracts" },
 ];
 
 for (const target of targets) {

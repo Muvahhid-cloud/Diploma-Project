@@ -98,14 +98,44 @@ Deferred / changed from the original plan:
 - Wet-stack zoning around the core, stair headroom checks, accessibility checks: not yet
 - Version compare / restore: Phase 5 as planned
 
-## Phase 3 — AI interpretation ☐
-Goal: natural language → validated spec. Builds on Phase 2: the AI only has to produce a `BuildingSpecification` (generated JSON Schema in `packages/schema`); validation (`/spec/validate`), generation jobs, versions and the viewer already exist.
+## Phase 3 — AI building generation (NL → spec → layout → 3D) ☑
+Goal: natural language → validated `BuildingSpecification` → Phase 2 layout engine → `BuildingModel` → Phase 1 viewer. **Done 2026-09-28.** Details: [ai-pipeline.md](ai-pipeline.md).
 
-- AIProvider protocol, MockAIProvider, one real provider adapter (+ OpenAI-compatible)
-- Interpret pipeline with repair loop, assumptions, open questions
-- ai_runs logging; prompt versioning; eval suite (~50 prompts)
-- UI: prompt panel → spec review (assumptions highlighted) → generate
-- **Exit**: example prompt → house in < 60 s; eval pass rate ≥ 90 % on chosen provider
+Delivered:
+
+- `AIProvider` abstraction (one structured-output primitive + `generate_building_specification` / `repair_building_specification`), deterministic `MockAIProvider` (dev/tests/CI/offline, refused in production), `AnthropicProvider` (official SDK, structured outputs, cached system prompt, error mapping; the only module importing the SDK — import-linter contract)
+- Versioned prompt modules (`building-generation@1`): vocabulary generated from the spec enums, rules-profile minimums in the project context, explicit priorities, assumptions/conflicts/unsupported requests, clarification policy, prompt-injection quoting
+- `SpecificationDraft` output contract; interpreter with Pydantic + rules + form-field validation, **one** repair call, never accepting invalid output; repair changes to the program reported
+- `POST /ai/generate-building`, `GET /ai/generations/{id}`, `GET /projects/{id}/generations`; background generation with real stages; auth, ownership, prompt limits, hourly rate limit, one active generation per project; distinct failure codes with user-safe messages
+- Shared `generation.pipeline.layout_and_save` (spec-form job and AI use the same layout → validation → rules → version step); AI versions carry prompt, spec, seed, rules profile, engine version and generation provenance
+- `ai_generations` + `ai_runs` tables (Alembic `0003`); structured generation log line (no secrets; prompt text only when enabled)
+- `ProjectContext` builder and read-only, ownership-scoped AI tools (Phase 5 preparation)
+- Generated web contracts for the AI API (`pnpm schema` → `ai-generation.schema.json`, TS types, Zod validators)
+- Web: AI generator on the projects dashboard (examples, optional structured details, "Generate 3D building") → editor opens with real-stage progress → the building appears; clarification questions; failures with reasons; generation summary over the 3D view (requested vs generated, warnings, assumptions, provider); history drawer; "New design" drawer with AI / specification-form tabs; design report shows the request, assumptions and AI provenance
+
+**Completion checklist** (verified 2026-09-28, Windows dev machine, `AI_PROVIDER=mock`):
+
+| Criterion | Result |
+|---|---|
+| BuildingSpecification exists and is validated | ☑ spec 1.0.0 (unchanged) — Pydantic tier 1 + rules tier 2 + form fields |
+| AIProvider abstraction / MockAIProvider | ☑ |
+| AnthropicProvider with environment configuration | ☑ implemented and unit-tested against a fake SDK client; settings fail fast without key/model. ☐ **not live-tested** — no project Anthropic credentials configured (`tests/ai/test_live_anthropic.py`, `RUN_LIVE_AI_TESTS=true`) |
+| NL generation endpoint; schema validation; invalid output rejected/repaired | ☑ |
+| Spec passes building rules → layout engine → valid BuildingModel → version | ☑ demo prompt: 2 floors, 279.7 m² (asked 280), 4 bedrooms, 3 bathrooms, 2-car garage, balcony, all checks met, no rules findings |
+| Existing 3D engine displays it; rotate, zoom, select, floors, properties | ☑ verified in the browser (dev and production build) |
+| Summary, warnings, assumptions displayed | ☑ summary card + design report |
+| Generation history stored | ☑ `ai_generations` / `ai_runs`; history drawer |
+| Authentication / ownership | ☑ 401 / 404 tests |
+| Mock pipeline in CI; unit/integration tests | ☑ API 285 passed + 1 live test skipped, web 126 passed |
+| Lint / type checks / import boundaries / production build | ☑ ruff, ruff format, import-linter (3 contracts), mypy strict, ESLint, tsc; `next build` OK |
+| No major console errors; browser E2E | ☑ dashboard prompt → editor → v1 rendered; clarification → v2; infeasible request → failure with reasons; history; report |
+
+Deferred / changed from the original plan:
+
+- Spec review step before generating (form with highlighted assumptions) → replaced by the post-generation summary with assumptions and requested-vs-delivered checks; the specification form remains available for precise edits
+- Eval suite (~50 prompts) and `pnpm eval` → not yet; the mock prompts are parametrized tests and the live test covers the demo prompt
+- OpenAI-compatible adapter → later
+- "Exit: eval pass rate ≥ 90 %" → pending the eval suite and live credentials
 
 ## Phase 4 — Quantities & preliminary cost ☐
 - Material library (YAML → DB); item-code vocabulary
@@ -159,6 +189,8 @@ IFC export · GLB fixture catalog · multiple cost regions & user-editable catal
 | 9 | Layout scheme v1 (2026-09-28) | Double-loaded corridor bands with the stair core in the street band and tucked service rooms (reachable + daylit by construction); other plan types later |
 | 10 | Generated element ids (2026-09-28) | `uuid5(project id, semantic key)`: stable across regenerations in a project, never shared between projects |
 | 11 | Requested area vs. room program (2026-09-28) | The requested gross floor area is delivered; rooms deviate instead, and every deviation > 15 % (and unmet adjacency) is reported — never silent |
+| 12 | AI output mechanism (2026-09-28) | Structured outputs (JSON Schema of `SpecificationDraft`) instead of forced tool use; ≤ 1 repair call; model name from `AI_MODEL` only |
+| 13 | Default model suggestion (2026-09-28) | `.env.example` suggests `claude-opus-5`; any model is a configuration change, never a code change |
 
 ## Open decisions
 

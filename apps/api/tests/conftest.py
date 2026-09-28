@@ -61,6 +61,8 @@ def pytest_configure(config: pytest.Config) -> None:
     os.environ["JWT_SECRET"] = "test-secret-" + "x" * 32
     os.environ["COOKIE_SECURE"] = "false"
     os.environ["CORS_ORIGINS"] = ""
+    # Tests never call a paid API (CLAUDE.md rule 13); live tests opt in explicitly.
+    os.environ["AI_PROVIDER"] = "mock"
     run_alembic("downgrade", "base")
     run_alembic("upgrade", "head")
 
@@ -79,7 +81,10 @@ async def _clean_tables() -> AsyncIterator[None]:
 
     async with get_engine().begin() as conn:
         await conn.execute(
-            text("TRUNCATE users, refresh_tokens, projects, project_versions, jobs CASCADE")
+            text(
+                "TRUNCATE users, refresh_tokens, projects, project_versions, jobs, "
+                "ai_generations, ai_runs CASCADE"
+            )
         )
 
 

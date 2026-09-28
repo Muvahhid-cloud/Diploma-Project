@@ -24,8 +24,8 @@ class StructuredRequest:
     prompt_version: str
     system: str
     messages: tuple[AIMessage, ...]
-    tool_name: str
-    tool_description: str
+    output_name: str
+    output_description: str
     output_schema: dict[str, Any]
     max_tokens: int
     # The user's original request, for providers that do not run a language model (mock).
@@ -35,7 +35,7 @@ class StructuredRequest:
 
 @dataclass(frozen=True)
 class StructuredResult:
-    data: dict[str, Any] | None  # the forced tool's input; None if the model did not call it
+    data: dict[str, Any] | None  # the structured output; None if the model returned none
     raw_output: str  # what the model returned, serialized (stored in ai_runs for debugging)
     model: str
     input_tokens: int = 0

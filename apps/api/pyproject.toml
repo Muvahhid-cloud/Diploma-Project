@@ -17,6 +17,8 @@ dependencies = [
     "shapely>=2.1",
     # Rules profiles are human-edited YAML data files (data/rules-profiles).
     "pyyaml>=6.0",
+    # First real AI provider; imported only by app/modules/ai/providers/anthropic.py.
+    "anthropic>=1.0",
 ]
 
 [dependency-groups]
@@ -101,3 +103,11 @@ name = "Core does not depend on feature modules"
 type = "forbidden"
 source_modules = ["app.core"]
 forbidden_modules = ["app.modules"]
+
+[[tool.importlinter.contracts]]
+name = "Vendor AI SDKs are imported only by their provider adapter (CLAUDE.md rule 13)"
+type = "forbidden"
+source_modules = ["app"]
+forbidden_modules = ["anthropic"]
+ignore_imports = ["app.modules.ai.providers.anthropic -> anthropic"]
+allow_indirect_imports = true

@@ -94,7 +94,7 @@ pnpm typecheck               # tsc --noEmit + mypy
 pnpm test                    # vitest + pytest (pytest auto-starts embedded Postgres unless TEST_DATABASE_URL is set)
 pnpm check                   # lint + typecheck + test
 pnpm migrate                 # alembic upgrade head
-pnpm schema                  # regenerate packages/schema (model + spec JSON Schemas, TS types) from Pydantic
+pnpm schema                  # regenerate packages/schema (model + spec + AI API JSON Schemas, TS types) from Pydantic
 pnpm fixtures                # regenerate data/fixtures/demo-house.model.json from its authoring script
 pnpm golden                  # regenerate layout golden files (data/fixtures/golden) + generated-house fixture
 ```
@@ -107,6 +107,16 @@ Local environment notes (dev machine is Windows): `uv` may only be available as 
 - Determinism: the only randomness is the seeded `random.Random` in the candidate search. Never break ties on object identity (`id()`), memory order, set/dict-of-hash iteration or float noise — a test runs the engine under two `PYTHONHASHSEED`s.
 - Any change to layout output (incl. furniture) changes the golden files: run `pnpm golden` deliberately and explain the change in the commit. Bump `ENGINE_VERSION` in `layout/config.py` when generated models change meaningfully.
 - Generated models must pass `validate_model` with no errors and no `ROOM_UNREACHABLE`, and `rules.model_checks` with no findings, for all reference specs (`data/fixtures/specs`).
+## AI generation notes (Phase 3)
+
+- Pipeline and contracts: `docs/ai-pipeline.md`. The AI answers only with a `SpecificationDraft` (structured output, JSON Schema from Pydantic) — never geometry, costs or code. Output is validated (Pydantic → `rules.spec_checks` → form fields); at most `AI_MAX_REPAIRS` (default 1) repair calls; invalid output is never accepted.
+- Providers: `MockAIProvider` (deterministic, dev/tests/CI, refused in production) and `AnthropicProvider` (`AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `AI_MODEL` — config only, never a model name in business logic). The `anthropic` SDK is imported only in `ai/providers/anthropic.py` (import-linter contract).
+- Prompts live in `ai/prompts/`; changing their wording or structure = bump `PROMPT_VERSION`. The vocabulary in the prompt is generated from the spec enums, and dimensional numbers come from the rules profile — don't hard-code either.
+- The generation use case orchestrates only; layout goes through `generation.pipeline.layout_and_save` (shared with the spec form). Record real stages on `ai_generations`; never show invented progress.
+- Changing the mock interpreter must keep every mock prompt in `tests/ai/test_mock_provider.py` laying out without errors.
+- Changing AI API DTOs (`ai/schemas/responses.py`) ⇒ `pnpm schema` (the web uses the generated validators) and refresh `apps/web/src/features/ai/__fixtures__` from a real response if the shape changed.
+- Live Anthropic test: `RUN_LIVE_AI_TESTS=true` only; never in CI.
+
 ## Working agreements for Claude
 
 - Read the relevant `/docs` file before changing a subsystem; update docs when behavior or decisions change.

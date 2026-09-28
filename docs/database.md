@@ -1,8 +1,8 @@
 # Database
 
-Status: **Accepted (v0.3)** · PostgreSQL 16 · SQLAlchemy 2.x (typed, async via `asyncpg`) · Alembic
+Status: **Accepted (v0.4)** · PostgreSQL 16 · SQLAlchemy 2.x (typed, async via `asyncpg`) · Alembic
 
-Implemented tables (Alembic `0001`, `0002`): `users`, `refresh_tokens`, `projects`, `project_versions`, `jobs`. The rest of this document is the target design; sections say where the implementation differs.
+Implemented tables (Alembic `0001`–`0003`): `users`, `refresh_tokens`, `projects`, `project_versions`, `jobs`, `ai_generations`, `ai_runs`. The rest of this document is the target design; sections say where the implementation differs.
 
 ## 1. Principles
 
@@ -24,7 +24,8 @@ users ─┬─< refresh_tokens
                                          │        └─< reports
                                          ├─< drafts (per user)
                                          ├─< jobs
-                                         └─< ai_runs
+                                         ├─< ai_generations ─< ai_runs
+                                         └─ (ai_generations.version_id → project_versions)
 cost_catalogs ─< cost_items
 materials (library, seeded)
 ```
@@ -70,8 +71,8 @@ materials (library, seeded)
 | number | int | per-project sequence (v1, v2…), unique(project_id, number) |
 | label | varchar(200) | "Modern family house (seed 0)" |
 | created_by | uuid FK users null (set null) | |
-| source | varchar(32) | `generation` / `fixture` (Phase 2); `modification` / `manual` / `restore` later |
-| prompt | text null | NL input that led here (Phase 3) |
+| source | varchar(32) | `generation` (spec form) / `ai_generation` (Phase 3) / `fixture`; `modification` / `manual` / `restore` later |
+| prompt | text null | NL input that led here (AI generations) |
 | spec | jsonb null | BuildingSpecification snapshot (null for fixtures) |
 | model | jsonb | BuildingModel snapshot |
 | operations | jsonb, default `[]` | ops applied relative to parent (empty for generation) |
@@ -81,7 +82,7 @@ materials (library, seeded)
 | seed | int null | layout seed (reproducibility: spec + seed + engine + profile ⇒ same model) |
 | model_hash | varchar(64) | sha256 of the canonical model JSON (dedupe, cache keys) |
 | summary | jsonb | `ModelSummary`: storeys, GFA, net area, rooms, bedrooms, bathrooms, WCs, garage, balconies, terraces, element counts (cost fields in Phase 4) |
-| report | jsonb null | generation report: warnings (deviations from the spec, spec warnings, rules findings at generation time), notes, engine metrics |
+| report | jsonb null | generation report: warnings (AI conflicts/unsupported/repair changes, deviations from the spec, spec warnings, rules findings at generation time), notes, engine metrics, `generation` provenance for AI versions (generation id, type, provider, model, prompt version) |
 | created_at | timestamptz | |
 
 No `updated_at` — immutable. `spec`/`model` are large; list queries defer them and return `summary` only. The full-version endpoint recomputes the summary from the model (derived data) and evaluates rules findings on read.
@@ -93,10 +94,41 @@ Per (project, user) uncommitted working state.
 ### jobs (implemented, `0002`)
 | id | project_id (cascade, index; + (project_id, created_at)) | user_id (cascade) | kind (`generate`; later `modify_plan`/`analyze`/`report`) | status (`queued`/`running`/`succeeded`/`failed`) | stage varchar (`queued` → `layout` → `checking` → `saving` → `done`) | progress float (completed stages / total — no invented percentages) | input jsonb (spec, seed, label, spec warnings) | result jsonb (version id/number, summary) | error jsonb (`{code, message, details}`) | created_at, started_at, finished_at |
 
-At most one active (`queued`/`running`) generation per project (409 `GENERATION_IN_PROGRESS`). Jobs run in-process (ADR-010); on startup jobs left active by a previous process are marked failed (`JOB_INTERRUPTED`).
+At most one active (`queued`/`running`) generation per project — spec-form job or AI generation (409 `GENERATION_IN_PROGRESS`). Jobs run in-process (ADR-010); on startup jobs left active by a previous process are marked failed (`JOB_INTERRUPTED`).
 
-### ai_runs
-| id | job_id null | project_id | user_id | task | provider | model | prompt_version | input jsonb (redacted) | raw_output text | parsed_output jsonb | issues jsonb | repair_count int | input_tokens, output_tokens int | latency_ms int | cost_usd numeric(10,5) | status | created_at |
+### ai_generations (implemented, `0003`)
+The natural-language generation history (docs/ai-pipeline.md §6). One row per `POST /ai/generate-building`; polled by the client.
+
+| column | type | notes |
+|---|---|---|
+| id | uuid PK | |
+| project_id | uuid FK projects (cascade) | index; + (project_id, created_at) |
+| user_id | uuid FK users (cascade) | + index (user_id, created_at) for the hourly rate limit |
+| kind | varchar(32) | `building_generation` |
+| status | varchar(24) | `queued` / `running` / `completed` / `needs_clarification` / `failed` |
+| stage | varchar(32) null | real stage: `queued` → `interpreting` → `validating` [→ `repairing`] → `layout` → `checking` → `saving` → `done` |
+| prompt | text | the user's description (their input; stored for history and debugging) |
+| options | jsonb | form fields (`GenerationOptions`: area, storeys, style, budget, region, seed) |
+| provider, model, prompt_version | varchar | e.g. `anthropic`, the configured model, `building-generation@1` |
+| understanding | text null | the AI's one-sentence restatement |
+| spec | jsonb null | accepted `BuildingSpecification` snapshot (includes assumptions) |
+| warnings | jsonb, default `[]` | issues shown to the user (AI + spec + layout deviations + rules findings) |
+| clarification_questions | jsonb, default `[]` | when status is `needs_clarification` |
+| error | jsonb null | `{code, message, details}` (details = issues with JSON pointers) |
+| version_id | uuid FK project_versions null (set null) | the version created |
+| seed, rules_profile, engine_version | | reproducibility (spec + seed + profile + engine ⇒ same model) |
+| repair_count, input_tokens, output_tokens, duration_ms | int | |
+| names_project | bool | project created for this generation → renamed after the spec |
+| created_at, started_at, finished_at | timestamptz | |
+
+At most one active generation (or spec-form job) per project (409). On startup, rows left `queued`/`running` are failed with `JOB_INTERRUPTED`.
+
+### ai_runs (implemented, `0003`)
+One row per provider call (generation or repair), also when it failed.
+
+| id | generation_id FK ai_generations (cascade) null, index | project_id FK (cascade) | user_id FK (set null) | task (`generate_specification` / `repair_specification`) | provider | model | prompt_version | status (`ok` / `invalid` / `error`) | error_code | raw_output text (≤ 100 000 chars) | parsed_output jsonb | issues jsonb | input_tokens, output_tokens, latency_ms | created_at | + index (project_id, created_at) |
+
+No API keys or other secrets are stored. `cost_usd` from the original design is not stored: prices never live in code (CLAUDE.md rule 16); token counts are kept so spend can be derived from a price catalog later.
 
 ### version_quantities
 | version_id PK/FK | takeoff jsonb (lines) | computed_with text (quantities engine version) | created_at |
@@ -146,7 +178,7 @@ v1 (generation) ── v2 (kitchen wider) ── v4 (skylight)       ← project
 
 - `project_versions (project_id, number desc)`, `(project_id, created_at desc)`, `(parent_version_id)`
 - `jobs (project_id, created_at desc)`, partial `jobs (status) where status in ('queued','running')`
-- `ai_runs (project_id, created_at desc)`, `(created_at)` for spend reports
+- `ai_generations (project_id, created_at)`, `(user_id, created_at)`; `ai_runs (project_id, created_at)`, `(generation_id)`
 - `refresh_tokens (user_id)`, `(family_id)`
 - No GIN on model JSONB in v1 (we don't query inside models).
 

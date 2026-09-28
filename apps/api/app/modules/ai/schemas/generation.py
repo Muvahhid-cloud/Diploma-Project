@@ -1,7 +1,7 @@
 """What an AI provider must return for building generation, and the user's structured options.
 
-`SpecificationDraft` is the *only* shape a model can answer with (it is the input schema of the
-forced `submit_building_specification` tool). It wraps a `BuildingSpecification` — intent, no
+`SpecificationDraft` is the *only* shape a model can answer with (it is the JSON Schema of the
+structured output). It wraps a `BuildingSpecification` — intent, no
 geometry — plus what the model understood, what it could not represent and what it needs to
 ask. Everything in it is untrusted until Pydantic and the rules checks have accepted it.
 """
@@ -11,7 +11,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.building.specification import ArchitecturalStyle, BuildingSpecification, Budget
+from app.modules.building.specification import ArchitecturalStyle, Budget, BuildingSpecification
 
 MAX_SEED = 2**31 - 1
 
@@ -24,7 +24,7 @@ class InterpretationOutcome(StrEnum):
 
 
 class SpecificationDraft(BaseModel):
-    """Tool output of the interpreter model (validated like any untrusted input)."""
+    """Structured output of the interpreter model (validated like any untrusted input)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -63,10 +63,7 @@ class SpecificationDraft(BaseModel):
     def _outcome_payload(self) -> "SpecificationDraft":
         if self.outcome is InterpretationOutcome.SPECIFICATION and self.specification is None:
             raise ValueError("specification is required when outcome is 'specification'")
-        if (
-            self.outcome is InterpretationOutcome.CLARIFICATION
-            and not self.clarification_questions
-        ):
+        if self.outcome is InterpretationOutcome.CLARIFICATION and not self.clarification_questions:
             raise ValueError("clarification_questions are required when outcome is 'clarification'")
         return self
 

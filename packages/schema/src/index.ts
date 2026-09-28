@@ -3,8 +3,10 @@
 // by `pnpm schema`. See docs/building-model.md §8 and CLAUDE.md rule 7.
 import { z } from "zod";
 
+import aiGenerationJsonSchema from "../generated/ai-generation.schema.json";
 import buildingModelJsonSchema from "../generated/building-model.schema.json";
 import buildingSpecificationJsonSchema from "../generated/building-specification.schema.json";
+import type { AIGenerationList, AIGenerationOut } from "./generated/ai-generation";
 import type { BuildingModel } from "./generated/building-model";
 import type { BuildingSpecification } from "./generated/building-specification";
 
@@ -47,3 +49,32 @@ export const buildingModelSchema = z.fromJSONSchema(
 export const buildingSpecificationSchema = z.fromJSONSchema(
   buildingSpecificationJsonSchema as JsonSchemaInput,
 ) as z.ZodType<BuildingSpecification>;
+
+// --- AI generation API contracts (app/modules/ai/schemas/responses.py) ---
+export type {
+  AIGenerateRequest,
+  AIGenerationList,
+  AIGenerationOut,
+  AIGenerationSummaryOut,
+  GenerationErrorOut,
+  GenerationOptions,
+  RequirementCheck,
+} from "./generated/ai-generation";
+export { aiGenerationJsonSchema };
+
+function aiDefinition(name: string): JsonSchemaInput {
+  return {
+    $ref: `#/$defs/${name}`,
+    $defs: aiGenerationJsonSchema.$defs,
+  } as unknown as JsonSchemaInput;
+}
+
+/** Validator for GET/POST generation responses. */
+export const aiGenerationSchema = z.fromJSONSchema(
+  aiDefinition("AIGenerationOut"),
+) as z.ZodType<AIGenerationOut>;
+
+/** Validator for a project's generation history. */
+export const aiGenerationListSchema = z.fromJSONSchema(
+  aiDefinition("AIGenerationList"),
+) as z.ZodType<AIGenerationList>;

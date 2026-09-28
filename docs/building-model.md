@@ -1,6 +1,6 @@
 # Building Model
 
-Status: **Implemented for Phase 2 (v0.4)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
+Status: **Implemented for Phase 3 (v0.5)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
 
 There are **two** schemas, deliberately separated:
 
@@ -85,7 +85,13 @@ Semantics:
 - `level` is a 0-based storey index (0 = ground floor); `null` lets the engine choose.
 - `count` expands one requirement into instances `bedroom_1`, `bedroom_2`, … (the instance key is the room's semantic key suffix, `room:bedroom_2`).
 - Areas are per room, on wall centerlines. Rooms without `target_area_m2` get engine defaults (layout `LayoutConfig.default_areas`), scaled to fill the requested floor area (service rooms by at most ±30 %, living spaces and bedrooms up to 2×).
-- `assumptions` / `open_questions` are carried for the AI interpreter (Phase 3) and shown to the user.
+- `assumptions` / `open_questions` are filled by the AI interpreter (every inferred value is an assumption with its JSON pointer and reason) and shown to the user.
+
+### 2.0 Produced by AI (Phase 3)
+
+The schema is unchanged by Phase 3 (still 1.0.0): the AI must produce exactly this document. Models answer with a `SpecificationDraft` (`app/modules/ai/schemas/generation.py`) that wraps it with `outcome` (`specification` | `clarification`), `understanding`, `clarification_questions`, `conflicts` and `unsupported_requests`; the draft is validated like any untrusted input (tier 1 + tier 2, one repair call at most — docs/ai-pipeline.md §5). Requests the vocabulary cannot express are reported, never approximated silently; the closed vocabularies above are also what the prompt offers (generated from the enums).
+
+`building/requirements.py` (pure) derives the key requirements of a spec (`SpecFacts`: storeys, floor area, bedrooms, bathrooms incl. en-suites, WCs, garage cars, balconies, terrace) and compares them with a generated model's `ModelSummary` (`RequirementCheck`: requested → delivered, met). It powers the "requested vs generated" summary and detects when an AI repair changed the user's program.
 
 ### 2.1 Room types (v1)
 
@@ -121,7 +127,7 @@ Implemented in `apps/api/app/modules/building/{primitives,enums,elements,model}.
 }
 ```
 
-The spec a model was generated from is stored next to it in the project version (not inside the model). `systems` (MEP) is added as a minor schema version in Phase 6.
+The spec a model was generated from is stored next to it in the project version (not inside the model). Versions produced by the AI pipeline have `source = "ai_generation"`, keep the user's `prompt`, and their generation report carries `generation` provenance (generation id, `building_generation`, provider, model, prompt version). `systems` (MEP) is added as a minor schema version in Phase 6.
 
 ### 3.1 Level ("floor")
 

@@ -1,6 +1,6 @@
 # BuildAI 3D — System Architecture
 
-Status: **Accepted (v0.1)** · Owner: Architecture · Last updated: 2026-09-27
+Status: **Accepted (v0.2)** · Owner: Architecture · Last updated: 2026-09-28
 
 This document is the top-level map. Deep dives:
 
@@ -133,8 +133,9 @@ apps/api/
         ├── mep/                 # ★ DOMAIN: plumbing / electrical / HVAC generation
         ├── quantities/          # ★ DOMAIN: model → quantity takeoff
         ├── costing/             # ★ DOMAIN: takeoff × catalog → estimate; catalog persistence
-        ├── ai/                  # AIProvider abstraction, providers, prompts, pipeline
-        ├── generation/          # use case: validate spec → layout job → version (Phase 2)
+        ├── ai/                  # AIProvider (mock, anthropic), prompts, interpreter (validate/repair),
+        │                        # NL generation use case + history (Phase 3), context, read-only tools
+        ├── generation/          # use case: validate spec → layout job → version; shared layout_and_save pipeline
         ├── jobs/                # job table + in-process runner (async work)
         └── reports/             # report assembly (HTML → PDF)
 ```
@@ -150,13 +151,13 @@ module/
 └── schemas.py     # API DTOs (Pydantic)
 ```
 
-★ Domain modules contain only pure Python (Pydantic + stdlib + numpy/shapely where needed). **Rule: domain modules never import FastAPI, SQLAlchemy, `core.db`, or `ai`.** Enforced by import-linter in CI.
+★ Domain modules contain only pure Python (Pydantic + stdlib + numpy/shapely where needed). **Rule: domain modules never import FastAPI, SQLAlchemy, `core.db`, or `ai`.** Enforced by import-linter in CI, together with "core does not depend on feature modules" and "vendor AI SDKs are imported only by their provider adapter".
 
 Dependency direction:
 
 ```
 router → service → { repository, domain modules, ai }
-ai → building (schemas only)
+ai → building, rules (schemas), generation.pipeline (use case); vendor SDKs only in ai/providers/<vendor>.py
 rules → building (schemas only)
 layout → building, rules  mep → building, rules
 quantities → building    costing → quantities, building
@@ -171,7 +172,10 @@ All routes under `/api/v1`. OpenAPI generated automatically.
 | POST | `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout` | Auth |
 | GET/POST | `/projects` | List / create |
 | GET/PATCH/DELETE | `/projects/{id}` | Project CRUD (delete = soft) |
-| POST | `/projects/{id}/generate` | ☑ Phase 2: `{spec, seed, label?}` → 202 job (layout → new version); tier-1/2 spec errors → 422 `SPEC_INVALID`; one active generation per project (409). Phase 3 adds the NL prompt → spec step in front |
+| POST | `/projects/{id}/generate` | ☑ Phase 2: `{spec, seed, label?}` → 202 job (layout → new version); tier-1/2 spec errors → 422 `SPEC_INVALID`; one active generation per project (409) |
+| POST | `/ai/generate-building` | ☑ Phase 3: `{project_id?, prompt, options}` → 202 AI generation (NL → spec → validation/repair → layout → new version); without `project_id` a project is created; 409 busy, 429 rate limit, 503 provider not configured |
+| GET | `/ai/generations/{id}` | ☑ Poll an AI generation: real stage, spec, assumptions, warnings, summary, requested-vs-delivered checks, version, error |
+| GET | `/projects/{id}/generations` | ☑ AI generation history of a project |
 | GET | `/jobs/{id}` | ☑ Poll job status / real stage / result / error (owner only) |
 | POST | `/projects/{id}/spec/validate` | ☑ Validate a spec (schema + rules profile) without generating |
 | GET | `/projects/{id}/versions` | ☑ Versions, newest first (summaries only) |
@@ -189,7 +193,7 @@ All routes under `/api/v1`. OpenAPI generated automatically.
 
 ### 4.2 Long-running work
 
-LLM calls + layout search take 5–60 s (the Phase 2 layout engine alone: 0.05–1 s). Implemented: a `jobs` table plus in-process `asyncio` background tasks (`modules/jobs/runner.py`; the CPU-bound layout runs in a worker thread); the client polls `GET /jobs/{id}` via TanStack Query and shows the job's real stages. The job interface (`enqueue(kind, payload) → job_id`) is designed so a real worker (arq + Redis) can replace the in-process runner without API changes. We add Redis only when we run >1 API replica or jobs outgrow the request process.
+LLM calls + layout search take 5–60 s (the Phase 2 layout engine alone: 0.05–1 s). Implemented: a `jobs` table (spec-form generation) and the `ai_generations` table (NL generation, docs/ai-pipeline.md §6) plus in-process `asyncio` background tasks (`modules/jobs/runner.py`; the CPU-bound layout runs in a worker thread); the client polls `GET /jobs/{id}` via TanStack Query and shows the job's real stages. The job interface (`enqueue(kind, payload) → job_id`) is designed so a real worker (arq + Redis) can replace the in-process runner without API changes. We add Redis only when we run >1 API replica or jobs outgrow the request process.
 
 ### 4.3 Authentication
 
@@ -213,9 +217,11 @@ apps/web/src/
 │   ├── projects/                # project list
 │   └── projects/[projectId]/    # editor (client-heavy)
 ├── features/                    # vertical slices: UI + hooks + api for one feature
+│   ├── ai/                      # NL generator (prompt form, real-stage progress, clarification,
+│   │                            # summary over the 3D view, history) — generated contracts
 │   ├── auth/
 │   ├── projects/
-│   ├── generation/              # prompt panel, job progress
+│   ├── generation/              # specification form, job progress
 │   ├── editor/                  # layout shell, model tree, inspector
 │   ├── modification/            # NL edit, plan preview, diff apply
 │   ├── quantities/
@@ -272,6 +278,8 @@ Generated Zod schemas validate every API payload at the boundary (`lib/api.ts`).
 | ADR-009 | Money as **Decimal** with explicit currency; catalogs versioned by region/date | floats | Financial correctness and reproducibility |
 | ADR-010 | In-process jobs first, worker later behind same interface | Celery from day 1 | Avoid infra before need |
 | ADR-011 | MEP is **schematic** (rule-based routing), labeled "not for construction" | Engineering-grade design | Out of scope and liability; still gives quantities + visualization |
+| ADR-012 | AI answers through **structured outputs** (JSON Schema of `SpecificationDraft`), validated by Pydantic + rules, **one** repair call at most | Forced tool use; free text + parsing; multi-call agents | Works on every current Claude model (newer models reject forced `tool_choice`); one call per generation; invalid output never accepted |
+| ADR-013 | AI generation runs as a background task recording its **real stage** on `ai_generations` (polled) | Synchronous request; SSE streaming | Same in-process runner as ADR-010; progress without invented percentages; history for free |
 
 ---
 

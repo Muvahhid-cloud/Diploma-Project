@@ -1,10 +1,19 @@
 "use client";
 
-import { type BuildingSpecification, buildingSpecificationSchema } from "@buildai/schema";
+import {
+  type AIGenerationOut,
+  type BuildingSpecification,
+  buildingSpecificationSchema,
+} from "@buildai/schema";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { materialCache } from "@/engine/materials/material-cache";
+import { isTerminal, useAIGeneration } from "@/features/ai/api";
+import { AIGeneratorPanel } from "@/features/ai/components/AIGeneratorPanel";
+import { StageList } from "@/features/ai/components/AIGenerationStatus";
+import { GenerationHistory } from "@/features/ai/components/GenerationHistory";
+import { GenerationSummary } from "@/features/ai/components/GenerationSummary";
 import { GenerationPanel } from "@/features/generation/components/GenerationPanel";
 import { useProject } from "@/features/projects/api";
 import { useImportDemo, useVersion, useVersions } from "@/features/versions/api";
@@ -18,21 +27,36 @@ import { useViewerStore } from "@/stores/viewer-store";
 
 import { BuildingEditor } from "./BuildingEditor";
 
-type Drawer = "none" | "generate" | "report";
+type Drawer = "none" | "generate" | "report" | "history";
+type DesignMode = "ai" | "form";
 
 /**
  * Project editor: shows one version of the project in the Phase 1 viewer. The model comes from
- * the stored version (validated by the generated schema in the building store); new versions
- * are generated from a specification by the layout engine.
+ * the stored version (validated by the generated schema in the building store). New versions
+ * come from a natural-language description (AI -> spec -> layout engine) or from the
+ * specification form (layout engine directly).
  */
-export function ProjectEditor({ projectId }: { projectId: string }) {
+export function ProjectEditor({
+  projectId,
+  generationId = null,
+}: {
+  projectId: string;
+  /** An AI generation to follow (started from the projects dashboard). */
+  generationId?: string | null;
+}) {
   const project = useProject(projectId);
   const versions = useVersions(projectId);
   const [chosen, setChosen] = useState<string | null>(null);
-  const versionId = chosen ?? project.data?.current_version_id ?? null;
-  const version = useVersion(projectId, versionId);
   const [drawer, setDrawer] = useState<Drawer>("none");
+  const [mode, setMode] = useState<DesignMode>("ai");
   const [justGenerated, setJustGenerated] = useState<string | null>(null);
+  // The AI generation whose summary is shown over the 3D view (and whose version is opened).
+  const [summaryId, setSummaryId] = useState<string | null>(generationId);
+  const summary = useAIGeneration(summaryId);
+  const summaryVersion =
+    summary.data?.status === "completed" ? (summary.data.version_id ?? null) : null;
+  const versionId = chosen ?? summaryVersion ?? project.data?.current_version_id ?? null;
+  const version = useVersion(projectId, versionId);
   const status = useBuildingStore((s) => s.status);
   const scene = useBuildingStore((s) => s.scene);
   const buildError = useBuildingStore((s) => s.error);
@@ -49,7 +73,7 @@ export function ProjectEditor({ projectId }: { projectId: string }) {
       description: building?.description ?? "",
     });
     useSelectionStore.getState().select(null);
-    useViewerStore.getState().reset();
+    useViewerStore.getState().reset(); // frames the whole building (exterior camera)
   }, [version.data, projectId, project.data?.name]);
 
   useEffect(
@@ -64,6 +88,14 @@ export function ProjectEditor({ projectId }: { projectId: string }) {
   const onGenerated = useCallback((id: string) => {
     setChosen(id);
     setJustGenerated(id);
+    setSummaryId(null);
+    setDrawer("none");
+  }, []);
+
+  const onAICompleted = useCallback((generation: AIGenerationOut) => {
+    setChosen(generation.version_id ?? null);
+    setJustGenerated(null);
+    setSummaryId(generation.id);
     setDrawer("none");
   }, []);
 
@@ -83,6 +115,9 @@ export function ProjectEditor({ projectId }: { projectId: string }) {
   const p = project.data;
   const hasVersions = (versions.data?.length ?? 0) > 0;
   const spec = specOf(version.data);
+  const running = summary.data !== undefined && !isTerminal(summary.data);
+  const showSummary =
+    summary.data?.status === "completed" && version.data?.id === summary.data.version_id;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -114,20 +149,18 @@ export function ProjectEditor({ projectId }: { projectId: string }) {
           {p.region_code} · {p.currency} · rules {p.rules_profile_id}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          <DrawerButton drawer={drawer} value="history" onToggle={setDrawer}>
+            History
+          </DrawerButton>
           {version.data && (
-            <button
-              type="button"
-              onClick={() => setDrawer(drawer === "report" ? "none" : "report")}
-              aria-pressed={drawer === "report"}
-              className="rounded-md px-3 py-1 text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
-            >
+            <DrawerButton drawer={drawer} value="report" onToggle={setDrawer}>
               Report
               {reportCount(version.data) > 0 && (
                 <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-xs text-amber-800">
                   {reportCount(version.data)}
                 </span>
               )}
-            </button>
+            </DrawerButton>
           )}
           {hasVersions && (
             <button
@@ -154,7 +187,15 @@ export function ProjectEditor({ projectId }: { projectId: string }) {
         {versions.isPending ? (
           <Centered>Loading versions…</Centered>
         ) : !hasVersions ? (
-          <StartView projectId={projectId} onGenerated={onGenerated} />
+          <StartView
+            projectId={projectId}
+            currency={p.currency}
+            mode={mode}
+            onMode={setMode}
+            generationId={summaryId}
+            onGenerated={onGenerated}
+            onAICompleted={onAICompleted}
+          />
         ) : version.isError ? (
           <Centered tone="error">Could not load this version.</Centered>
         ) : status === "error" ? (
@@ -170,17 +211,65 @@ export function ProjectEditor({ projectId }: { projectId: string }) {
           <BuildingEditor scene={scene} />
         )}
 
+        {hasVersions && (showSummary || running) && summary.data && (
+          <div className="pointer-events-none absolute right-3 top-3 z-10 flex justify-end lg:right-[19rem] xl:right-[21rem]">
+            <div className="pointer-events-auto">
+              {showSummary ? (
+                <GenerationSummary
+                  generation={summary.data}
+                  onDismiss={() => setSummaryId(null)}
+                  onOpenReport={() => setDrawer("report")}
+                />
+              ) : (
+                <div className="w-[min(92vw,360px)] rounded-xl border border-neutral-200 bg-white/95 p-4 shadow-xl dark:border-neutral-800 dark:bg-neutral-950/95">
+                  <StageList generation={summary.data} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {drawer !== "none" && (
           <aside
-            aria-label={drawer === "generate" ? "Generate a new design" : "Design report"}
-            className="absolute inset-y-0 right-0 z-10 flex w-full max-w-[520px] flex-col border-l border-neutral-200 bg-white shadow-xl dark:border-neutral-800 dark:bg-neutral-950"
+            aria-label={
+              drawer === "generate"
+                ? "Generate a new design"
+                : drawer === "history"
+                  ? "Generation history"
+                  : "Design report"
+            }
+            className="absolute inset-y-0 right-0 z-20 flex w-full max-w-[520px] flex-col border-l border-neutral-200 bg-white shadow-xl dark:border-neutral-800 dark:bg-neutral-950"
           >
             {drawer === "generate" ? (
-              <GenerationPanel
+              <>
+                <ModeTabs mode={mode} onMode={setMode} />
+                <div className="min-h-0 flex-1">
+                  {mode === "ai" ? (
+                    <AIGeneratorPanel
+                      projectId={projectId}
+                      currency={p.currency}
+                      onCompleted={onAICompleted}
+                      onClose={() => setDrawer("none")}
+                    />
+                  ) : (
+                    <GenerationPanel
+                      projectId={projectId}
+                      initialSpec={spec}
+                      onGenerated={onGenerated}
+                      onClose={() => setDrawer("none")}
+                    />
+                  )}
+                </div>
+              </>
+            ) : drawer === "history" ? (
+              <GenerationHistory
                 projectId={projectId}
-                initialSpec={spec}
-                onGenerated={onGenerated}
                 onClose={() => setDrawer("none")}
+                onOpen={(g) => {
+                  setChosen(g.version_id);
+                  setSummaryId(g.id);
+                  setDrawer("none");
+                }}
               />
             ) : version.data ? (
               <ReportPanel version={version.data} onClose={() => setDrawer("none")} />
@@ -188,6 +277,58 @@ export function ProjectEditor({ projectId }: { projectId: string }) {
           </aside>
         )}
       </div>
+    </div>
+  );
+}
+
+function DrawerButton({
+  drawer,
+  value,
+  onToggle,
+  children,
+}: {
+  drawer: Drawer;
+  value: Drawer;
+  onToggle: (drawer: Drawer) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(drawer === value ? "none" : value)}
+      aria-pressed={drawer === value}
+      className="rounded-md px-3 py-1 text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+    >
+      {children}
+    </button>
+  );
+}
+
+function ModeTabs({ mode, onMode }: { mode: DesignMode; onMode: (mode: DesignMode) => void }) {
+  const tab = (value: DesignMode, label: string) => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={mode === value}
+      onClick={() => onMode(value)}
+      className={
+        "border-b-2 px-3 py-2 text-sm " +
+        (mode === value
+          ? "border-blue-600 font-medium text-blue-700 dark:text-blue-400"
+          : "border-transparent text-neutral-500 hover:text-neutral-800")
+      }
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div
+      role="tablist"
+      aria-label="How to create the design"
+      className="flex gap-1 border-b border-neutral-200 px-3 dark:border-neutral-800"
+    >
+      {tab("ai", "Describe with AI")}
+      {tab("form", "Specification form")}
     </div>
   );
 }
@@ -205,22 +346,44 @@ function reportCount(version: Version): number {
 
 function StartView({
   projectId,
+  currency,
+  mode,
+  onMode,
+  generationId,
   onGenerated,
+  onAICompleted,
 }: {
   projectId: string;
+  currency: string;
+  mode: DesignMode;
+  onMode: (mode: DesignMode) => void;
+  generationId: string | null;
   onGenerated: (versionId: string) => void;
+  onAICompleted: (generation: AIGenerationOut) => void;
 }) {
   const importDemo = useImportDemo(projectId);
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <div className="flex min-h-0 flex-1 flex-col border-neutral-200 lg:max-w-[560px] lg:border-r dark:border-neutral-800">
-        <GenerationPanel projectId={projectId} onGenerated={onGenerated} />
+        <ModeTabs mode={mode} onMode={onMode} />
+        <div className="min-h-0 flex-1">
+          {mode === "ai" ? (
+            <AIGeneratorPanel
+              projectId={projectId}
+              currency={currency}
+              initialGenerationId={generationId}
+              onCompleted={onAICompleted}
+            />
+          ) : (
+            <GenerationPanel projectId={projectId} onGenerated={onGenerated} />
+          )}
+        </div>
       </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-neutral-50 p-8 text-center dark:bg-neutral-900">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-gradient-to-br from-neutral-50 to-blue-50 p-8 text-center dark:from-neutral-900 dark:to-neutral-950">
         <p className="max-w-md text-sm text-neutral-600 dark:text-neutral-300">
-          This project has no design yet. Fill in the specification — or start from a reference
-          preset — and generate a house. Each generation is saved as a new version you can open,
-          inspect and compare.
+          This project has no design yet. Describe the house you want and the building appears here
+          as an interactive 3D model — every wall, room, door and window is a real, selectable
+          object. Each generation is saved as a new version.
         </p>
         <button
           type="button"

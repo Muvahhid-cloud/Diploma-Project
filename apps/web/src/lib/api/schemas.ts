@@ -85,10 +85,20 @@ export type VersionSummary = z.infer<typeof versionSummarySchema>;
 
 export const versionListSchema = z.object({ items: z.array(versionSummarySchema) });
 
+export const generationProvenanceSchema = z.object({
+  generation_id: z.uuid(),
+  generation_type: z.literal("building_generation"),
+  provider: z.string(),
+  model: z.string(),
+  prompt_version: z.string(),
+});
+
 export const generationReportSchema = z.object({
   warnings: z.array(issueSchema),
   notes: z.array(z.string()),
   metrics: z.record(z.string(), z.unknown()),
+  // Set when the version came from an AI generation (Phase 3).
+  generation: generationProvenanceSchema.nullable().optional(),
 });
 export type GenerationReport = z.infer<typeof generationReportSchema>;
 

@@ -6,9 +6,9 @@ Required settings have no default: the app refuses to start without them.
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import Field, PostgresDsn, field_validator, model_validator
+from pydantic import Field, PostgresDsn, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -56,8 +56,21 @@ class Settings(BaseSettings):
     default_currency: str = Field(default="KZT", pattern=r"^[A-Z]{3}$")
     default_rules_profile: str = "generic-residential@1"
 
-    # AI (Phase 3). Tests always use "mock".
-    ai_provider: str = "mock"
+    # AI (docs/ai-pipeline.md). "mock" is the deterministic offline interpreter (development,
+    # tests, CI); it is refused in production. Tests always use "mock".
+    ai_provider: Literal["mock", "anthropic"] = "mock"
+    ai_model: str | None = None  # e.g. claude-opus-5; required for real providers
+    anthropic_api_key: SecretStr | None = None  # backend only, never logged or sent to clients
+    anthropic_base_url: str | None = None
+    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    ai_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
+    ai_max_retries: int = Field(default=1, ge=0, le=5)  # transient errors, inside the SDK
+    ai_max_repairs: int = Field(default=1, ge=0, le=2)  # repair calls after invalid output
+    ai_max_output_tokens: int = Field(default=16000, ge=1000, le=64000)
+    ai_max_prompt_chars: int = Field(default=4000, ge=100, le=20000)
+    ai_generations_per_hour: int = Field(default=30, ge=1, le=10000)  # per user
+    # Log the full prompt text (off by default: only length and a hash are logged).
+    ai_log_prompts: bool = False
 
     @field_validator("database_url")
     @classmethod
@@ -80,6 +93,17 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET still has the .env.example placeholder value")
             if not self.cookie_secure:
                 raise ValueError("COOKIE_SECURE must be true in production")
+            if self.ai_provider == "mock":
+                raise ValueError("AI_PROVIDER=mock is for development/tests only, not production")
+        return self
+
+    @model_validator(mode="after")
+    def _ai_provider_config(self) -> "Settings":
+        if self.ai_provider == "anthropic":
+            if self.anthropic_api_key is None or not self.anthropic_api_key.get_secret_value():
+                raise ValueError("AI_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
+            if not self.ai_model:
+                raise ValueError("AI_PROVIDER=anthropic requires AI_MODEL (e.g. claude-opus-5)")
         return self
 
     @property

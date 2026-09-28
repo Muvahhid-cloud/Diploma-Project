@@ -21,11 +21,11 @@ MODEL_SCHEMA_FILE = "building-model.schema.json"
 SPEC_SCHEMA_FILE = "building-specification.schema.json"
 
 
-def _strip_property_titles(node: Any) -> Any:
+def strip_property_titles(node: Any) -> Any:
     """Pydantic titles every property ("Id", "Name", ...); code generators turn each into a
     named alias type. Keep titles only on models/enums ($defs), which name real types."""
     if isinstance(node, dict):
-        out = {k: _strip_property_titles(v) for k, v in node.items()}
+        out = {k: strip_property_titles(v) for k, v in node.items()}
         # A default next to a $ref makes TS generators emit duplicate types (Style1, ...).
         # Defaults are applied by Pydantic on the server; the schema doesn't need to carry them.
         if "$ref" in out:
@@ -39,14 +39,14 @@ def _strip_property_titles(node: Any) -> Any:
             }
         return out
     if isinstance(node, list):
-        return [_strip_property_titles(v) for v in node]
+        return [strip_property_titles(v) for v in node]
     return node
 
 
 def _export(
     model: type[BaseModel], mode: Literal["validation", "serialization"], version: str
 ) -> dict[str, Any]:
-    schema = _strip_property_titles(model.model_json_schema(mode=mode))
+    schema = strip_property_titles(model.model_json_schema(mode=mode))
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$comment": f"GENERATED from Pydantic (schema_version {version}). Do not edit.",

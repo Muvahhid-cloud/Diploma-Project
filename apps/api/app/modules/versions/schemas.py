@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,12 +10,23 @@ from app.modules.building.specification import BuildingSpecification
 from app.modules.building.summary import ModelSummary
 
 
+class GenerationProvenance(BaseModel):
+    """Which AI generation produced a version (absent for spec-form and fixture versions)."""
+
+    generation_id: uuid.UUID
+    generation_type: Literal["building_generation"] = "building_generation"
+    provider: str
+    model: str
+    prompt_version: str
+
+
 class GenerationReport(BaseModel):
-    """What the layout engine reported when this version was generated."""
+    """What the layout engine (and, for AI versions, the interpreter) reported at generation."""
 
     warnings: list[Issue] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     metrics: dict[str, Any] = Field(default_factory=dict)
+    generation: GenerationProvenance | None = None
 
 
 class VersionSummaryOut(BaseModel):

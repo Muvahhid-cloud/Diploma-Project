@@ -9,6 +9,9 @@ from app.core.config import get_settings
 from app.core.db import get_sessionmaker
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
+from app.modules.ai.repository import AIGenerationRepository
+from app.modules.ai.router import project_router as ai_project_router
+from app.modules.ai.router import router as ai_router
 from app.modules.auth.router import router as auth_router
 from app.modules.demo.router import router as demo_router
 from app.modules.generation.router import router as generation_router
@@ -27,9 +30,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     try:
         async with get_sessionmaker()() as session:
             count = await JobRepository(session).fail_interrupted()
+            count += await AIGenerationRepository(session).fail_interrupted()
             await session.commit()
         if count:
-            logger.warning("Marked %d interrupted job(s) as failed", count)
+            logger.warning("Marked %d interrupted job(s)/generation(s) as failed", count)
     except Exception:
         logger.warning("Could not check for interrupted jobs", exc_info=True)
     yield
@@ -41,7 +45,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="BuildAI 3D API",
-        version="0.2.0",
+        version="0.3.0",
         docs_url=None if settings.is_production else "/docs",
         redoc_url=None,
         lifespan=lifespan,
@@ -63,6 +67,8 @@ def create_app() -> FastAPI:
     v1.include_router(versions_router)
     v1.include_router(generation_router)
     v1.include_router(jobs_router)
+    v1.include_router(ai_router)
+    v1.include_router(ai_project_router)
     v1.include_router(demo_router)
     app.include_router(v1)
     return app

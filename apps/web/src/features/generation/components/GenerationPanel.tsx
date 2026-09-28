@@ -96,8 +96,8 @@ export function GenerationPanel({
         <div>
           <h2 className="font-semibold">Generate a house from a specification</h2>
           <p className="text-xs text-neutral-500">
-            Describe what you need; the deterministic layout engine plans the rooms, walls,
-            openings, stairs and roof. Natural-language input arrives with AI in Phase 3.
+            Set the program precisely; the deterministic layout engine plans the rooms, walls,
+            openings, stairs and roof. Prefer plain language? Use “Describe with AI”.
           </p>
         </div>
         {onClose && (
