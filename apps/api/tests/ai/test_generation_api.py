@@ -15,6 +15,7 @@ from app.modules.ai.models import AIGeneration, AIRun
 from app.modules.ai.providers import use_ai_provider
 from app.modules.ai.repository import AIGenerationRepository
 from app.modules.jobs.runner import job_runner
+from app.modules.layout.config import ENGINE_VERSION
 from tests.ai.helpers import DEMO_PROMPT, ScriptedAIProvider, valid_draft
 from tests.conftest import bearer, register
 
@@ -61,7 +62,7 @@ async def test_demo_prompt_generates_a_version(client: Any) -> None:
     assert gen["version_number"] == 1 and gen["version_id"]
     assert gen["repair_count"] == 0 and gen["duration_ms"] is not None
     assert gen["rules_profile"] == "generic-residential@1"
-    assert gen["engine_version"] == "layout@1.0.0" and gen["seed"] == 0
+    assert gen["engine_version"] == ENGINE_VERSION and gen["seed"] == 0
     spec = gen["specification"]
     assert spec["targets"] == {
         "gross_floor_area_m2": 280.0,
@@ -86,7 +87,7 @@ async def test_demo_prompt_generates_a_version(client: Any) -> None:
     assert version["source"] == "ai_generation"
     assert version["prompt"] == DEMO_PROMPT
     assert version["spec"]["name"] == spec["name"]
-    assert version["seed"] == 0 and version["engine_version"] == "layout@1.0.0"
+    assert version["seed"] == 0 and version["engine_version"] == ENGINE_VERSION
     assert version["report"]["generation"]["generation_id"] == gen["id"]
     assert version["report"]["generation"]["provider"] == "mock"
     assert version["label"].startswith("AI · ")

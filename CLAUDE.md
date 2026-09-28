@@ -14,7 +14,7 @@ Current phase: see the ☐/◐/☑ markers in `docs/roadmap.md`. Do not implemen
 
 1. **The BuildingModel is the source of truth.** Meshes, quantities, costs, reports, AI analyses are derived. Never persist or edit derived data as if it were primary.
 2. **AI produces intent, never geometry.** LLM output is a `BuildingSpecification`, a `ModificationPlan` (typed operations) or an analysis. LLMs never output coordinates, wall geometry or UUIDs. All AI output is untrusted until Pydantic + rule validation pass.
-3. **Every element** has: `id` (UUID), `type`, `name`, `layer`, `level_id`, `position`, `rotation`, `dimensions`, `material_id`, `properties`, `relationships`, `origin`, `locked`, `semantic_key`. Walls are wall objects, rooms are room objects, windows are window objects, pipes are pipe objects. No "blob" geometry.
+3. **Every element** has: `id` (UUID), `type`, `name`, `layer`, `level_id`, `position`, `rotation`, `dimensions`, `material_id`, `properties`, `relationships`, `origin`, `locked`, `semantic_key`, and (schema 1.1.0) an optional `type_ref` into the model's self-contained `types`. Walls are wall objects, rooms are room objects, windows are window objects, pipes are pipe objects. No "blob" geometry.
 4. **Models change only through typed operations** (`building/operations`). No ad-hoc dict mutation of models in services or routes.
 5. **Deterministic engines.** Layout/MEP/quantities/costing are pure functions of (input, seed, engine_version). No wall-clock, no global random, no I/O inside them.
 6. **Domain purity.** `modules/{building,rules,layout,mep,quantities,costing}` must not import FastAPI, SQLAlchemy, `app.core.db`, or `modules/ai`. Enforced by import-linter.
@@ -121,11 +121,13 @@ Local environment notes (dev machine is Windows): `uv` may only be available as 
 ## Knowledge notes (Phase 3.5)
 
 - Design: `docs/knowledge.md`. Steps K1 Foundation → K2 Families/Types/Assemblies → K3 Design Systems → K4 Templates → K5 Knowledge API and Units → K6 Optional Structural Elements; don't rename, merge or start a step before the previous one is reviewed.
-- **Knowledge is not rules.** Knowledge packs never hold enforceable minimums/maximums; those stay in rules profiles. Only `approved` knowledge (via `registry.approved_items()`) may ever be consumed by engines or AI; in K1 nothing consumes the catalog (import-linter contract; lift it deliberately, per module).
+- **Knowledge is not rules.** Knowledge packs never hold enforceable minimums/maximums; those stay in rules profiles. Only `approved` knowledge and component records may ever be consumed by engines or AI. Only `generation.pipeline` imports the catalog (import-linter contract): it resolves approved types (`catalog.resolver`), checks them against the rules profile (`rules.type_checks`, refuse — never resize) and passes a `building.types.TypeSet` to the layout engine.
 - Every knowledge object needs provenance (source + printed pages) and a status. Source-derived knowledge starts `extracted`/`needs_verification`, editorial knowledge `draft`. Never mark knowledge reviewed/approved without a human review.
 - Paraphrase only; never copy source text or reproduce figures/symbols; record inferences in `inferences`; never invent source-derived facts.
 - Georgievsky 2004 is one source, scoped as the `spds` drawing-convention profile, never global. The `core` pack may cite published sources only for existence.
 - Packs are immutable once used (new `.v<n>`); after any data change run the tests and `pnpm knowledge:lock`. New element/room types or relationship kinds need a `core` ontology entry.
+- K2 types: `buildai-generic-types@1` stays `draft` until a person reviews it; it must keep reproducing `LayoutConfig` exactly (test). Never add types derived from unapproved knowledge (e.g. the GOST window table) as usable records. New layout roles go into `building/types.py TYPE_ROLES` and every role mapping.
+- Stored models are read only through `building.migrations.load_model` (upgrade-on-read; never rewrite stored rows). A schema change keeps `geometry_sha256` in the golden files unchanged unless geometry is meant to change.
 
 ## Working agreements for Claude
 

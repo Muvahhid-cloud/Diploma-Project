@@ -143,7 +143,7 @@ Goal: ground the AI and the deterministic engines in structured, versioned, sour
 | Step | Scope | Status |
 |---|---|---|
 | K1 — Knowledge Foundation | pure `modules/catalog`; provenance/source model; knowledge-item, ontology, glossary, drawing-profile and region-profile schemas; loader, registry, integrity, hash lock; `core@1` pack; Georgievsky 2004 source record and `spds-georgievsky-2004@1` pack (`spds@1` drawing profile); `generic@1` region profile | ☑ 2026-09-28 |
-| K2 — Families, Types, Assemblies | typed families/types (doors, windows, walls, floors, roofs, stairs) and layered assemblies from approved knowledge | ☐ |
+| K2 — Families, Types, Assemblies | family/type/assembly/role-mapping records + integrity; generic type pack (draft, migrated `LayoutConfig` defaults); gated resolver; rules checks for types; BuildingModel 1.1.0 (`type_ref`, type/assembly snapshots, ceiling ref) with upgrade-on-read; layout `TypeSet`; properties panel type section | ☑ 2026-09-28 (branch, awaiting review) |
 | K3 — Design Systems | coherent combinations of types, assemblies, roofs, finishes, openings | ☐ |
 | K4 — Templates | real building configurations (programme, relationships, circulation, structural concept, constraints, layout hints); needs sources beyond the drafting handbook | ☐ |
 | K5 — Knowledge API and Units | read-only catalog API; imperial display/input conversion over SI internals | ☐ |
@@ -158,6 +158,18 @@ Goal: ground the AI and the deterministic engines in structured, versioned, sour
 | Georgievsky 2004 scoped, not global | ☑ `drawing_convention_profile` pack (`spds`); `core` may cite it only for existence; the default region does not include it |
 | Integrity + hash lock | ☑ the loader refuses stale/missing locks and every integrity violation (tested per rule) |
 | Phase 1–3 unchanged | ☑ golden files, fixtures and `packages/schema` regenerate byte-identically; no engine, prompt or schema change |
+
+**K2 completion checklist** (verified 2026-09-28):
+
+| Criterion | Result |
+|---|---|
+| BuildingModel 1.1.0 + validation | ☑ type/assembly snapshots, `type_ref`, `ceiling_assembly_ref`; checks for unknown/mismatched refs, fixed-parameter mismatch, assembly thickness, unused snapshots |
+| Upgrade-on-read | ☑ one `load_model` path (versions, AI tools, demo); pure + idempotent; legacy rows served as 1.1.0, row and hash untouched; frozen 1.0.0 fixtures |
+| Catalog components + generic pack | ☑ 7 families, 20 types, 7 assemblies, 1 mapping — all `draft`; equal to `LayoutConfig` (test) |
+| Gated, deterministic resolution | ☑ approved-only; unapproved derived knowledge blocks a type; draft repository ⇒ no type set |
+| Rules separate from types | ☑ types below profile minimums refused with `rule_ref`, never resized |
+| Geometry preserved | ☑ geometry fingerprints of all 10 reference specs unchanged, typed and untyped; web scene hash unchanged |
+| Book-derived types | ☑ none added; a GOST window type stays blocked until its K1 item is approved (tested) |
 
 ## Phase 4 — Quantities & preliminary cost ☐
 - Material library (YAML → DB); item-code vocabulary

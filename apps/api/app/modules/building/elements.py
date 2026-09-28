@@ -1,7 +1,8 @@
 """Building elements. Canonical schema — TS types and Zod validators are generated from these.
 
 Every element carries: id, type, name, layer, level_id, position, rotation, dimensions,
-material_id, properties, relationships, origin, locked, semantic_key (CLAUDE.md rule 3).
+material_id, properties, relationships, origin, locked, semantic_key (CLAUDE.md rule 3), and
+since schema 1.1.0 an optional `type_ref` into `BuildingModel.types` (building/types.py).
 
 `position` is an element-local anchor whose meaning is defined per type (see each class);
 absolute elevation = level.elevation + position.z. Polygon properties (room boundary, slab and
@@ -41,6 +42,7 @@ from app.modules.building.primitives import (
     Vec2,
     Vec3,
 )
+from app.modules.building.types import AssemblyId, TypeId
 
 Polygon = Annotated[list[Vec2], Field(min_length=3)]
 
@@ -62,6 +64,7 @@ class ElementBase(Frozen):
     origin: Origin
     locked: bool = False
     semantic_key: str = Field(min_length=1, max_length=200)
+    type_ref: TypeId | None = None  # id of a TypeSnapshot in BuildingModel.types (1.1.0)
 
 
 # --- Wall ----------------------------------------------------------------------------------
@@ -151,6 +154,7 @@ class RoomProperties(Frozen):
     zone: Zone
     boundary: Polygon  # CCW, rectilinear in v1, wall centerlines, relative to position
     floor_material_id: MaterialId | None
+    ceiling_assembly_ref: AssemblyId | None = None  # AssemblySnapshot of kind ceiling (1.1.0)
 
 
 class Room(ElementBase):

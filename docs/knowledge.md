@@ -1,16 +1,18 @@
 # Architectural Knowledge (Phase 3.5)
 
-Status: **K1 implemented (v0.1)** · Code: `apps/api/app/modules/catalog/` · Data: `data/knowledge/`
+Status: **K1 and K2 implemented (v0.2)** · Code: `apps/api/app/modules/catalog/` · Data: `data/knowledge/`
 
 Phase 3.5 grounds BuildAI in structured, source-attributed architectural knowledge. K1 is the
-foundation: schemas, provenance, the first packs, loading, integrity and hash locking. **Nothing
-consumes knowledge yet**: no engine, validator, prompt or API reads it (import-linter contract
-"K1: no module consumes the knowledge catalog yet").
+foundation: schemas, provenance, the first packs, loading, integrity and hash locking. K2 adds
+component records (families, types, assemblies, role mappings) and the gated resolver. **Only
+the generation pipeline consumes the catalog** (import-linter contract), and only APPROVED
+records; engines receive plain `building.types` data. Nothing is approved yet, so generation is
+still untyped.
 
 | Step | Scope | Status |
 |---|---|---|
 | **K1** Knowledge Foundation | catalog module, provenance, ontology, glossary, drawing profile, region-profile foundation, loader, registry, integrity, lock, first packs | ☑ |
-| K2 Families, Types, Assemblies | typed door/window/wall/floor/roof/stair families and layered assemblies | ☐ |
+| K2 Families, Types, Assemblies | family/type/assembly/role-mapping records, generic type pack (draft), resolver, BuildingModel 1.1.0 type snapshots, layout integration | ☑ (awaiting review) |
 | K3 Design Systems | coherent combinations of types, assemblies, roofs, finishes, openings | ☐ |
 | K4 Templates | real building configurations (programme, relationships, circulation, constraints) | ☐ |
 | K5 Knowledge API and Units | read-only catalog API; imperial display/input conversion | ☐ |
@@ -134,6 +136,45 @@ are always `reference_only` and never rules.
 `abbreviations`, `codes` (e.g. `spds_letter: ПР`), each cited to the page where the source
 uses the term.
 
+### 3.4 Components: families, types, assemblies (K2)
+
+Records live in a pack's `contents.components` files (`catalog/components.py`) and follow the
+same provenance, lifecycle, lock and integrity rules as knowledge items:
+
+| Record | Fields |
+|---|---|
+| `FamilyRecord` | `id` (`family.*`), `name`, `element_type`, `class_ref` (ontology class) |
+| `TypeRecord` | `id` (`type.*`), `family`, `name`, `params` (the model's typed `TypeParams`), `assembly`, `derived_from {knowledge: [item refs], layout_config: [field names]}`, `usage` |
+| `AssemblyRecord` | `id` (`assembly.*`), `kind` (wall/floor/roof/ceiling), `name`, `layers`, `total_thickness`, `derived_from` |
+| `RoleMapping` | `id` (`mapping.*`), `name`, `roles {role: type id}` covering every `TYPE_ROLES` role |
+
+**`buildai-generic-types@1`** (global, editorial, **draft**) migrates the layout engine's
+existing defaults (`LayoutConfig` + the material ids `build.py` writes) into 7 families, 20
+types, 7 assemblies and `mapping.generic`. It adds no construction data: assemblies are one
+structural layer of today's thickness with an **unspecified** material. A test asserts that the
+generic types reproduce `LayoutConfig` exactly. It is not derived from Georgievsky 2004 and is
+not approved automatically.
+
+Integrity adds: component ids unique; family element type and ontology class exist; type params
+match their family's element type; wall/slab/roof types name an assembly of the right kind (and
+only they do); assembly layers add up; materials exist in the material library; mappings cover
+exactly the known roles with types of the right element type; `derived_from` knowledge exists,
+and an **approved record may not be derived from unapproved knowledge**
+(`APPROVED_DERIVED_UNAPPROVED`).
+
+**Resolution** (`catalog/resolver.py`, `resolve_type_set(registry, mapping_id)`): a role gets a
+type only if the mapping, type, family and assembly are all approved, the type is a runtime
+candidate, and all derived knowledge is approved; otherwise the role is skipped with a reason
+(never substituted). No resolved role ⇒ no type set ⇒ untyped generation. Roles are visited in
+sorted order, snapshots are sorted by id and carry the sha256 of their catalog record, so the
+result is deterministic. The generation pipeline then checks the set against the project's rules
+profile (`rules/type_checks.py`): a type below a profile minimum fails the generation with
+`TYPE_RULE_VIOLATION` reasons and a `rule_ref` — it is never resized.
+
+Book-derived types (e.g. a GOST 11214-86 window family from
+`spds-georgievsky-2004@1:layout.window_sizes_gost_11214_86`) stay blocked while that item is
+`needs_verification`: integrity refuses to approve such a type and the resolver skips it.
+
 ## 4. Drawing profiles
 
 A `DrawingProfile` (`spds@1`) is a versioned grouping of a pack's drawing items by topic (sets,
@@ -187,16 +228,20 @@ references and grouping; region references (rules profile file, drawing profile,
 (LF-normalised, path-sorted). A stale, missing, unlisted or orphaned entry is an error.
 Workflow: edit data → run tests → `pnpm knowledge:lock` → commit data and lock together.
 
-## 8. What K1 does not do
+## 8. What K1/K2 do not do
 
-No K2–K6 content, no retrieval layer or vector search, no costing, no API, no changes to the
-layout engine, specification, model schema, prompts or generated contracts. Phase 1–3
-behaviour is unchanged (golden files and `packages/schema` are byte-identical).
+No K3–K6 content (design systems, templates, catalog API, units, structural elements), no
+retrieval layer or vector search, no costing, no prompt or specification changes. K2 changes the
+model schema (1.1.0, upgrade-on-read) and lets the layout engine use an approved type set; with
+the repository's draft pack, generated geometry is unchanged (geometry fingerprints equal).
 
 ## 9. Known limitations
 
 - Book items are unreviewed. Several tables were read from a low-resolution scan; the book's
   cited standards may have been superseded since 2004.
 - The book offers almost no room-programme knowledge; templates (K4) need other sources.
+- Generic assemblies are single-layer with unspecified materials, so Phase 4 quantities from
+  them are coarse (volume by function) until real build-ups come from a reviewed source.
+- Only the generic role mapping exists; style- or facade-driven mappings are K3 design systems.
 - IFC mappings and English definitions are editorial and unreviewed (`draft`).
 - `params` are typed JSON values checked for units; typed per-kind schemas arrive with K2.

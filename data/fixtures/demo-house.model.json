@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "id": "4a01093a-3d16-527a-9510-250c82094720",
   "building": {
     "name": "Demo family house",
@@ -57,6 +57,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:entrance",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 16.32,
@@ -84,7 +85,8 @@
             "y": 4.8
           }
         ],
-        "floor_material_id": "floor"
+        "floor_material_id": "floor",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -124,6 +126,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:staircase",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 6.72,
@@ -151,7 +154,8 @@
             "y": 4.8
           }
         ],
-        "floor_material_id": "floor"
+        "floor_material_id": "floor",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -187,6 +191,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:storage",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 6.24,
@@ -214,7 +219,8 @@
             "y": 2.4
           }
         ],
-        "floor_material_id": "floor"
+        "floor_material_id": "floor",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -254,6 +260,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:bath_g",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 6.24,
@@ -281,7 +288,8 @@
             "y": 2.4
           }
         ],
-        "floor_material_id": "tile"
+        "floor_material_id": "tile",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -321,6 +329,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:kitchen",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 27.6,
@@ -348,7 +357,8 @@
             "y": 6.0
           }
         ],
-        "floor_material_id": "floor"
+        "floor_material_id": "floor",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -392,6 +402,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:corridor_g",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 8.88,
@@ -419,7 +430,8 @@
             "y": 1.2
           }
         ],
-        "floor_material_id": "parquet"
+        "floor_material_id": "parquet",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -451,6 +463,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:living",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 29.6,
@@ -478,7 +491,8 @@
             "y": 4.0
           }
         ],
-        "floor_material_id": "parquet"
+        "floor_material_id": "parquet",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -510,6 +524,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:dining",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 18.4,
@@ -537,7 +552,8 @@
             "y": 4.0
           }
         ],
-        "floor_material_id": "parquet"
+        "floor_material_id": "parquet",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -565,6 +581,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:bedroom3",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 16.32,
@@ -592,7 +609,8 @@
             "y": 4.8
           }
         ],
-        "floor_material_id": "parquet"
+        "floor_material_id": "parquet",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -624,6 +642,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:bath_f",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 12.48,
@@ -651,7 +670,8 @@
             "y": 4.8
           }
         ],
-        "floor_material_id": "tile"
+        "floor_material_id": "tile",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -683,6 +703,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:bedroom2",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 22.08,
@@ -710,7 +731,8 @@
             "y": 4.8
           }
         ],
-        "floor_material_id": "parquet"
+        "floor_material_id": "parquet",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -754,6 +776,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:corridor_f",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 14.4,
@@ -781,7 +804,8 @@
             "y": 1.2
           }
         ],
-        "floor_material_id": "parquet"
+        "floor_material_id": "parquet",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -817,6 +841,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:master",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 29.6,
@@ -844,7 +869,8 @@
             "y": 4.0
           }
         ],
-        "floor_material_id": "parquet"
+        "floor_material_id": "parquet",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -876,6 +902,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:study",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 18.4,
@@ -903,7 +930,8 @@
             "y": 4.0
           }
         ],
-        "floor_material_id": "parquet"
+        "floor_material_id": "parquet",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -931,6 +959,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "room:balcony",
+      "type_ref": null,
       "type": "room",
       "dimensions": {
         "area": 9.6,
@@ -958,7 +987,8 @@
             "y": 1.6
           }
         ],
-        "floor_material_id": "decking"
+        "floor_material_id": "decking",
+        "ceiling_assembly_ref": null
       }
     },
     {
@@ -1002,6 +1032,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-S",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 12.0,
@@ -1049,6 +1080,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-E",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 10.0,
@@ -1096,6 +1128,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-N",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 12.0,
@@ -1147,6 +1180,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-W",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 10.0,
@@ -1198,6 +1232,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-S",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 12.0,
@@ -1249,6 +1284,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-E",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 10.0,
@@ -1300,6 +1336,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-N",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 12.0,
@@ -1351,6 +1388,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-W",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 10.0,
@@ -1394,6 +1432,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-I1",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 3.4,
@@ -1441,6 +1480,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-I2",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 4.8,
@@ -1484,6 +1524,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-I3",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 2.6,
@@ -1527,6 +1568,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-I4",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 2.6,
@@ -1578,6 +1620,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-I5",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 6.0,
@@ -1621,6 +1664,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:G-I6",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 7.4,
@@ -1660,6 +1704,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-I1",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 4.8,
@@ -1699,6 +1744,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-I2",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 4.8,
@@ -1742,6 +1788,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-I3",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 3.4,
@@ -1789,6 +1836,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-I4",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 7.2,
@@ -1832,6 +1880,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-I5",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 4.8,
@@ -1879,6 +1928,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-I6",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 12.0,
@@ -1922,6 +1972,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "wall:F-I7",
+      "type_ref": null,
       "type": "wall",
       "dimensions": {
         "length": 4.0,
@@ -1965,6 +2016,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:front",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 1.0,
@@ -2010,6 +2062,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:ent_corr",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 0.9,
@@ -2055,6 +2108,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:bath_g",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 0.8,
@@ -2100,6 +2154,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:storage",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 0.8,
@@ -2145,6 +2200,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:kitchen",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 0.9,
@@ -2190,6 +2246,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:living",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 1.6,
@@ -2231,6 +2288,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:garden",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 2.5,
@@ -2276,6 +2334,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:bedroom3",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 0.9,
@@ -2321,6 +2380,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:bath_f",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 0.8,
@@ -2366,6 +2426,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:bedroom2",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 0.9,
@@ -2411,6 +2472,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:master",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 0.9,
@@ -2456,6 +2518,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:study",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 0.9,
@@ -2501,6 +2564,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "door:balcony",
+      "type_ref": null,
       "type": "door",
       "dimensions": {
         "width": 2.4,
@@ -2538,6 +2602,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:ent",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 0.6,
@@ -2574,6 +2639,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:stair_g",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 1.0,
@@ -2610,6 +2676,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:storage",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 0.8,
@@ -2646,6 +2713,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:kitchen_s",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 3.0,
@@ -2682,6 +2750,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:kitchen_e",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 1.8,
@@ -2718,6 +2787,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:dining_e",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 2.2,
@@ -2754,6 +2824,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:dining_n",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 3.2,
@@ -2790,6 +2861,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:living_n",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 2.2,
@@ -2826,6 +2898,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:living_w",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 2.4,
@@ -2862,6 +2935,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:bed3_s",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 1.6,
@@ -2898,6 +2972,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:bed3_w",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 1.6,
@@ -2934,6 +3009,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:stair_f",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 1.0,
@@ -2970,6 +3046,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:bath_f",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 1.2,
@@ -3006,6 +3083,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:bed2_s",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 2.6,
@@ -3042,6 +3120,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:bed2_e",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 2.0,
@@ -3078,6 +3157,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:corr_e",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 0.8,
@@ -3114,6 +3194,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:corr_w",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 0.8,
@@ -3150,6 +3231,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:master_n",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 1.8,
@@ -3186,6 +3268,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:master_w",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 1.2,
@@ -3222,6 +3305,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:study_n",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 2.6,
@@ -3258,6 +3342,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "window:study_e",
+      "type_ref": null,
       "type": "window",
       "dimensions": {
         "width": 2.0,
@@ -3294,6 +3379,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:sofa",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 2.4,
@@ -3330,6 +3416,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:coffee",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.2,
@@ -3366,6 +3453,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:armchair",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.85,
@@ -3402,6 +3490,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:tv",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.8,
@@ -3438,6 +3527,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:dtable",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 2.0,
@@ -3474,6 +3564,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:chair_s0",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.45,
@@ -3510,6 +3601,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:chair_n0",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.45,
@@ -3546,6 +3638,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:chair_s1",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.45,
@@ -3582,6 +3675,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:chair_n1",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.45,
@@ -3618,6 +3712,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:chair_s2",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.45,
@@ -3654,6 +3749,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:chair_n2",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.45,
@@ -3690,6 +3786,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:counter",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 3.6,
@@ -3726,6 +3823,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:fridge",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.7,
@@ -3762,6 +3860,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:island",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 2.0,
@@ -3798,6 +3897,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:toilet_g",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.4,
@@ -3834,6 +3934,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:basin_g",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.8,
@@ -3870,6 +3971,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:shower_g",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.9,
@@ -3906,6 +4008,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:coat",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.2,
@@ -3942,6 +4045,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:bed_m",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.8,
@@ -3978,6 +4082,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:ns_m1",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.5,
@@ -4014,6 +4119,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:ns_m2",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.5,
@@ -4050,6 +4156,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:wardrobe_m",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 2.0,
@@ -4086,6 +4193,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:bed_2",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.6,
@@ -4122,6 +4230,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:desk_2",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.2,
@@ -4158,6 +4267,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:wardrobe_2",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.6,
@@ -4194,6 +4304,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:bed_3",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.4,
@@ -4230,6 +4341,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:desk_3",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.2,
@@ -4266,6 +4378,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:tub",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.7,
@@ -4302,6 +4415,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:toilet_f",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.4,
@@ -4338,6 +4452,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:basin_f",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.8,
@@ -4374,6 +4489,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:shower_f",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.9,
@@ -4410,6 +4526,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:desk_s",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.4,
@@ -4446,6 +4563,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:chair_s",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.45,
@@ -4482,6 +4600,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:shelf_s",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 1.6,
@@ -4518,6 +4637,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:btable",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.7,
@@ -4554,6 +4674,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:bchair1",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.45,
@@ -4590,6 +4711,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "furniture:bchair2",
+      "type_ref": null,
       "type": "furniture",
       "dimensions": {
         "width": 0.45,
@@ -4621,6 +4743,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "slab:ground",
+      "type_ref": null,
       "type": "slab",
       "dimensions": {
         "thickness": 0.3,
@@ -4669,6 +4792,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "slab:floor_f",
+      "type_ref": null,
       "type": "slab",
       "dimensions": {
         "thickness": 0.2,
@@ -4736,6 +4860,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "slab:balcony",
+      "type_ref": null,
       "type": "slab",
       "dimensions": {
         "thickness": 0.2,
@@ -4789,6 +4914,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "stair:main",
+      "type_ref": null,
       "type": "stair",
       "dimensions": {
         "width": 1.1,
@@ -4829,6 +4955,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "railing:stair",
+      "type_ref": null,
       "type": "railing",
       "dimensions": {
         "length": 3.9,
@@ -4865,6 +4992,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "railing:balcony_w",
+      "type_ref": null,
       "type": "railing",
       "dimensions": {
         "length": 1.4,
@@ -4901,6 +5029,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "railing:balcony_n",
+      "type_ref": null,
       "type": "railing",
       "dimensions": {
         "length": 5.9,
@@ -4937,6 +5066,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "railing:balcony_e",
+      "type_ref": null,
       "type": "railing",
       "dimensions": {
         "length": 1.4,
@@ -4968,6 +5098,7 @@
       "origin": "user",
       "locked": false,
       "semantic_key": "roof:main",
+      "type_ref": null,
       "type": "roof",
       "dimensions": {
         "thickness": 0.2,
@@ -5002,5 +5133,7 @@
   "metadata": {
     "source": "fixture",
     "generator": "app.modules.building.fixtures.demo_house"
-  }
+  },
+  "types": [],
+  "assemblies": []
 }

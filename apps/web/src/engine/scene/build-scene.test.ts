@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { fnv1a } from "../builders/common";
 import { parseBuildingModel } from "../model/parse";
-import { demoIndex, demoModelJson } from "../test-fixtures";
+import { demoIndex, demoModelJson, typedDemoModelJson } from "../test-fixtures";
 import { buildScene, disposeScene, type SceneGraph } from "./build-scene";
 
 /** Hash of everything that ends up on the GPU: keys, materials, matrices, buffers. */
@@ -24,6 +24,10 @@ describe("buildScene", () => {
 
   it("is deterministic: same model => identical geometry", () => {
     expect(sceneHash(buildScene(demoIndex()))).toBe(sceneHash(scene));
+  });
+
+  it("type metadata never changes geometry (builders are unchanged by K2)", () => {
+    expect(sceneHash(buildScene(parseBuildingModel(typedDemoModelJson())))).toBe(sceneHash(scene));
   });
 
   it("does not depend on the order of elements in the document", () => {

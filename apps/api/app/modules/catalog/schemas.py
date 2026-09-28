@@ -295,9 +295,16 @@ class PackContents(KnowledgeModel):
     ontology: list[ShortText] = Field(default_factory=list)
     glossary: list[ShortText] = Field(default_factory=list)
     drawing_profiles: list[ShortText] = Field(default_factory=list)
+    components: list[ShortText] = Field(default_factory=list)  # families/types/assemblies (K2)
 
     def files(self) -> list[str]:
-        return [*self.items, *self.ontology, *self.glossary, *self.drawing_profiles]
+        return [
+            *self.items,
+            *self.ontology,
+            *self.glossary,
+            *self.drawing_profiles,
+            *self.components,
+        ]
 
 
 class PackManifest(KnowledgeModel):

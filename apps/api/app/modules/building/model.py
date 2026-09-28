@@ -7,8 +7,10 @@ from pydantic import Field
 
 from app.modules.building.elements import Element
 from app.modules.building.primitives import Frozen, Meters, PositiveMeters
+from app.modules.building.types import AssemblySnapshot, TypeSnapshot
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
+SUPPORTED_SCHEMA_VERSIONS = ("1.0.0", "1.1.0")  # older ones are upgraded on read (migrations/)
 
 
 class BuildingInfo(Frozen):
@@ -34,7 +36,7 @@ class ModelMetadata(Frozen):
 
 
 class BuildingModel(Frozen):
-    schema_version: Literal["1.0.0"]
+    schema_version: Literal["1.1.0"]
     id: uuid.UUID
     building: BuildingInfo
     units: Literal["m"]
@@ -43,3 +45,6 @@ class BuildingModel(Frozen):
     levels: list[Level] = Field(min_length=1)
     elements: list[Element]
     metadata: ModelMetadata
+    # Self-contained type data (1.1.0): every type/assembly an element refers to, sorted by id.
+    types: list[TypeSnapshot] = Field(default_factory=list)
+    assemblies: list[AssemblySnapshot] = Field(default_factory=list)

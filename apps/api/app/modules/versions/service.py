@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.errors import NotFoundError
 from app.modules.auth.models import User
+from app.modules.building.migrations import load_model
 from app.modules.building.model import BuildingModel
 from app.modules.building.specification import BuildingSpecification
 from app.modules.building.summary import summarize
@@ -43,7 +44,7 @@ class VersionService:
         row = await self.repo.get(project_id, version_id)
         if row is None:
             raise NotFoundError("Version not found")
-        model = BuildingModel.model_validate(row.model)
+        model = load_model(row.model)  # upgrade-on-read; the stored row is never rewritten
         data_dir = get_settings().data_dir
         issues = [
             i

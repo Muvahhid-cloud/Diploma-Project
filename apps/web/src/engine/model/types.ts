@@ -34,6 +34,9 @@ export type {
 };
 
 export type BuildingElement = BuildingModel["elements"][number];
+/** Type and assembly snapshots carried by the model (schema 1.1.0). */
+export type TypeSnapshot = BuildingModel["types"][number];
+export type AssemblySnapshot = BuildingModel["assemblies"][number];
 export type ElementType = BuildingElement["type"];
 export type Opening = Door | Window;
 export type ElementOfType<T extends ElementType> = Extract<BuildingElement, { type: T }>;

@@ -38,6 +38,7 @@ from app.modules.building.geometry import (
 from app.modules.building.issues import Issue
 from app.modules.building.model import BuildingModel, Level
 from app.modules.building.primitives import EPS
+from app.modules.building.type_validation import check_types
 
 HABITABLE_ROOMS = frozenset(
     {
@@ -553,7 +554,7 @@ def validate_model(
     checker.stairs()
     checker.railings()
     checker.reachability()
-    return checker.issues
+    return checker.issues + check_types(model, checker.material_ids)
 
 
 Point2 = tuple[float, float]

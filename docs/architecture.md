@@ -162,7 +162,7 @@ Dependency direction:
 router → service → { repository, domain modules, ai }
 ai → building, rules (schemas), generation.pipeline (use case); vendor SDKs only in ai/providers/<vendor>.py
 rules → building (schemas only)
-catalog → building (schemas only); nothing → catalog in K1 (import-linter)
+catalog → building (schemas only); generation → catalog (approved component types, K2); engines never import catalog (import-linter)
 layout → building, rules  mep → building, rules
 quantities → building    costing → quantities, building
 ```
@@ -284,6 +284,7 @@ Generated Zod schemas validate every API payload at the boundary (`lib/api.ts`).
 | ADR-011 | MEP is **schematic** (rule-based routing), labeled "not for construction" | Engineering-grade design | Out of scope and liability; still gives quantities + visualization |
 | ADR-012 | AI answers through **structured outputs** (JSON Schema of `SpecificationDraft`), validated by Pydantic + rules, **one** repair call at most | Forced tool use; free text + parsing; multi-call agents | Works on every current Claude model (newer models reject forced `tool_choice`); one call per generation; invalid output never accepted |
 | ADR-014 | Architectural knowledge as **versioned, hash-locked YAML packs** with per-object provenance and a review lifecycle; only `approved` knowledge may be consumed; knowledge never replaces rules profiles (docs/knowledge.md) | Knowledge in the DB; RAG/vector search over sources; knowledge inside rules profiles | Reviewable diffs, reproducible loads, explicit attribution; no infra before need; keeps enforceable rules separate |
+| ADR-015 | Models carry **self-contained type/assembly snapshots** (BuildingModel 1.1.0) resolved from approved catalog records; the engine receives a `TypeSet`, never the catalog; stored 1.0.0 models are upgraded on read, never rewritten | Types referenced by id only (catalog lookup at render/quantity time); rewriting stored versions | Immutable versions stay reproducible; renderers and quantities need no catalog; one read path |
 | ADR-013 | AI generation runs as a background task recording its **real stage** on `ai_generations` (polled) | Synchronous request; SSE streaming | Same in-process runner as ADR-010; progress without invented percentages; history for free |
 
 ---

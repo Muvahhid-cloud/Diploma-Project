@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { bySemanticKey, demoIndex } from "@/engine/test-fixtures";
+import { parseBuildingModel } from "@/engine/model/parse";
+import { bySemanticKey, demoIndex, typedDemoModelJson } from "@/engine/test-fixtures";
 
 import { describeElement } from "./describe-element";
 
@@ -50,5 +51,42 @@ describe("describeElement", () => {
     expect(row("From level")).toBe("Floor 1");
     expect(row("To level")).toBe("Floor 2");
     expect(row("Risers")).toBe("16");
+  });
+});
+
+describe("describeElement: component types (schema 1.1.0)", () => {
+  const typed = parseBuildingModel(typedDemoModelJson());
+  const typedRow = (key: string, label: string) =>
+    describeElement(bySemanticKey(typed.model, key), typed)
+      .sections.flatMap((s) => s.rows)
+      .find((r) => r.label === label)?.value;
+
+  it("shows the type, family, assembly layers and catalog provenance", () => {
+    const d = describeElement(bySemanticKey(typed.model, "wall:G-S"), typed);
+    expect(d.sections.map((s) => s.title)).toContain("Assembly · Test exterior wall 300");
+    expect(typedRow("wall:G-S", "Component type")).toBe("Test exterior wall");
+    expect(typedRow("wall:G-S", "Type id")).toBe("type.wall.test_exterior_300");
+    expect(typedRow("wall:G-S", "Family")).toBe("family.wall.basic");
+    expect(typedRow("wall:G-S", "Catalog source")).toBe("test-types@1");
+    expect(typedRow("wall:G-S", "Record hash")).toBe("cdcdcdcdcdcd");
+    expect(typedRow("wall:G-S", "1. Structure")).toBe("Unspecified material · 0.28 m");
+    expect(typedRow("wall:G-S", "2. Finish (interior)")).toBe("Interior plaster (white) · 0.02 m");
+    expect(typedRow("wall:G-S", "Total thickness")).toBe("0.3 m");
+    expect(typedRow("wall:G-S", "Face finishes")).toBe("Per wall (see properties)");
+  });
+
+  it("marks untyped elements", () => {
+    expect(typedRow("room:living", "Component type")).toBe("None (untyped)");
+    expect(rows("wall:G-S").row("Component type")).toBe("None (untyped)");
+  });
+
+  it("shows the ceiling assembly reference of rooms", () => {
+    expect(rows("room:living").row("Ceiling assembly")).toBe("—");
+  });
+
+  it("refuses models whose elements reference unknown types", () => {
+    const broken = typedDemoModelJson();
+    broken.types = [];
+    expect(() => parseBuildingModel(broken)).toThrow(/references unknown type/);
   });
 });

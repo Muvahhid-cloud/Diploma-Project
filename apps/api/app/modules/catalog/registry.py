@@ -11,6 +11,12 @@ knowledge is visible for review and documentation, never for runtime decisions.
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 
+from app.modules.catalog.components import (
+    AssemblyRecord,
+    FamilyRecord,
+    RoleMapping,
+    TypeRecord,
+)
 from app.modules.catalog.provenance import Source, Status, Usage
 from app.modules.catalog.schemas import (
     DrawingProfile,
@@ -35,6 +41,10 @@ class LoadedPack:
     terms: tuple[Term, ...] = ()
     localized: tuple[LocalizedTerm, ...] = ()
     drawing_profiles: tuple[DrawingProfile, ...] = ()
+    families: tuple[FamilyRecord, ...] = ()
+    types: tuple[TypeRecord, ...] = ()
+    assemblies: tuple[AssemblyRecord, ...] = ()
+    role_mappings: tuple[RoleMapping, ...] = ()
     extra_files: tuple[str, ...] = ()  # YAML files present but not listed in the manifest
 
     @property
@@ -112,6 +122,32 @@ class KnowledgeRegistry:
 
     def drawing_profile(self, ref: str) -> DrawingProfile:
         return self.drawing_profiles()[ref]
+
+    # --- components (K2), one namespace across packs ---
+    def families(self) -> dict[str, FamilyRecord]:
+        return {f.id: f for p in self.packs.values() for f in p.families}
+
+    def component_types(self) -> dict[str, TypeRecord]:
+        return {t.id: t for p in self.packs.values() for t in p.types}
+
+    def assemblies(self) -> dict[str, AssemblyRecord]:
+        return {a.id: a for p in self.packs.values() for a in p.assemblies}
+
+    def role_mappings(self) -> dict[str, RoleMapping]:
+        return {m.id: m for p in self.packs.values() for m in p.role_mappings}
+
+    def pack_of(self, record_id: str) -> str | None:
+        """The pack ref that defines a component record (family/type/assembly/mapping)."""
+        for pack in self.packs.values():
+            ids = [
+                *(f.id for f in pack.families),
+                *(t.id for t in pack.types),
+                *(a.id for a in pack.assemblies),
+                *(m.id for m in pack.role_mappings),
+            ]
+            if record_id in ids:
+                return pack.ref
+        return None
 
     def region(self, ref: str) -> RegionProfile:
         return self.regions[ref]

@@ -2,7 +2,7 @@
 // Everything shown comes from the model; only labels and units are presentation.
 import { materialName } from "@/engine/materials/library";
 import type { ModelIndex } from "@/engine/model/model-index";
-import type { BuildingElement } from "@/engine/model/types";
+import type { AssemblySnapshot, BuildingElement } from "@/engine/model/types";
 
 export interface PropertyRow {
   label: string;
@@ -41,6 +41,7 @@ const LABELS: Record<string, string> = {
   to_level_id: "To level",
   asset_id: "3D asset",
   load_bearing: "Load-bearing",
+  ceiling_assembly_ref: "Ceiling assembly",
 };
 
 export function humanize(value: string): string {
@@ -92,10 +93,61 @@ function formatProperty(key: string, value: unknown, index: ModelIndex): string 
   }
   if (typeof value === "string") {
     if (key.endsWith("level_id")) return index.levelsById.get(value)?.name ?? value;
+    if (key.endsWith("_ref")) return index.assembliesById.get(value)?.name ?? value;
     if (key.endsWith("material_id") || key.startsWith("finish_")) return materialName(value);
     return humanize(value);
   }
   return JSON.stringify(value);
+}
+
+/** Layer rows of an assembly: "1. Structure" → "Unspecified · 0.3 m". */
+export function assemblyRows(assembly: AssemblySnapshot): PropertyRow[] {
+  return assembly.layers.map((layer, i) => ({
+    label: `${i + 1}. ${humanize(layer.function)}${layer.side ? ` (${layer.side})` : ""}`,
+    value: `${layer.material_id ? materialName(layer.material_id) : "Unspecified material"} · ${
+      layer.function === "surface" ? "surface" : formatMeters(layer.thickness)
+    }`,
+  }));
+}
+
+/** The component type section: type, family, assembly layers and catalog provenance. */
+export function typeSection(el: BuildingElement, index: ModelIndex): PropertySection[] {
+  if (!el.type_ref) {
+    return [
+      { title: "Component type", rows: [{ label: "Component type", value: "None (untyped)" }] },
+    ];
+  }
+  const type = index.typesById.get(el.type_ref);
+  if (!type) {
+    return [
+      {
+        title: "Component type",
+        rows: [{ label: "Component type", value: `Missing (${el.type_ref})`, mono: true }],
+      },
+    ];
+  }
+  const sections: PropertySection[] = [
+    {
+      title: "Component type",
+      rows: [
+        { label: "Component type", value: type.name },
+        { label: "Type id", value: type.id, mono: true },
+        { label: "Family", value: type.family, mono: true },
+        { label: "Catalog source", value: type.source, mono: true },
+        { label: "Record hash", value: type.content_sha256.slice(0, 12), mono: true },
+      ],
+    },
+  ];
+  const assembly = type.assembly_id ? index.assembliesById.get(type.assembly_id) : undefined;
+  if (assembly) {
+    const rows = assemblyRows(assembly);
+    rows.push({ label: "Total thickness", value: formatMeters(assembly.total_thickness) });
+    if (el.type === "wall") {
+      rows.push({ label: "Face finishes", value: "Per wall (see properties)" });
+    }
+    sections.push({ title: `Assembly · ${assembly.name}`, rows });
+  }
+  return sections;
 }
 
 export function describeElement(el: BuildingElement, index: ModelIndex): ElementDescription {
@@ -154,6 +206,7 @@ export function describeElement(el: BuildingElement, index: ModelIndex): Element
         ],
       },
       { title: "Properties", rows: properties },
+      ...typeSection(el, index),
       { title: `Relationships (${relationships.length})`, rows: relationships },
       {
         title: "Identity",

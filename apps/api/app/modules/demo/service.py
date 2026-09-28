@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import status
 
 from app.core.errors import AppError
+from app.modules.building.migrations import load_model_json
 from app.modules.building.model import BuildingModel
 from app.modules.building.validation import errors, validate_model
 from app.shared.data_files import material_ids
@@ -25,7 +26,7 @@ def demo_building_model(data_dir: Path) -> BuildingModel:
     An invalid fixture is a server bug: it is reported loudly instead of being served.
     """
     raw = (data_dir / DEMO_MODEL_PATH).read_text(encoding="utf-8")
-    model = BuildingModel.model_validate_json(raw)
+    model = load_model_json(raw)
     problems = errors(validate_model(model, material_ids=material_ids(data_dir)))
     if problems:
         raise ModelInvalidError(

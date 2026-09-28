@@ -1,19 +1,28 @@
 import shutil
+import tempfile
 from collections.abc import Callable
+from functools import cache
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from app.modules.building.issues import Issue
+from app.modules.building.types import TypeSet
 from app.modules.catalog.loader import KnowledgeLoadError, read_knowledge
 from app.modules.catalog.registry import KnowledgeRegistry
+from app.modules.catalog.resolver import resolve_type_set
 from tests.building.helpers import DATA_DIR
 
 BOOK_PACK = "spds-georgievsky-2004@1"
 BOOK_DIR = "packs/spds-georgievsky-2004.v1"
 CORE_PACK = "core@1"
 CORE_DIR = "packs/core.v1"
+GENERIC_PACK = "buildai-generic-types@1"
+GENERIC_DIR = "packs/buildai-generic-types.v1"
+GENERIC_COMPONENTS = f"{GENERIC_DIR}/components.yaml"
+COMPONENT_KINDS = ("families", "types", "assemblies", "role_mappings")
+TEST_REVIEW = {"reviewed_by": "test-suite (temporary copy only)", "reviewed_on": "2026-09-28"}
 
 
 def copy_data(tmp_path: Path) -> Path:
@@ -21,6 +30,7 @@ def copy_data(tmp_path: Path) -> Path:
     data = tmp_path / "data"
     shutil.copytree(DATA_DIR / "knowledge", data / "knowledge")
     shutil.copytree(DATA_DIR / "rules-profiles", data / "rules-profiles")
+    shutil.copytree(DATA_DIR / "materials", data / "materials")
     return data
 
 
@@ -50,3 +60,26 @@ def item(doc: dict[str, Any], item_id: str) -> dict[str, Any]:
 
 def real_registry() -> KnowledgeRegistry:
     return read_knowledge(DATA_DIR)
+
+
+def approve_components(data: Path, only: set[str] | None = None) -> None:
+    """Approve generic component records IN A TEMPORARY COPY (the repository copy stays draft)."""
+
+    def approve(doc: dict[str, Any]) -> None:
+        for kind in COMPONENT_KINDS:
+            for rec in doc[kind]:
+                if only is None or rec["id"] in only:
+                    rec["status"] = "approved"
+                    rec["review"] = dict(TEST_REVIEW)
+
+    edit_yaml(data, GENERIC_COMPONENTS, approve)
+
+
+@cache
+def approved_generic_type_set() -> TypeSet:
+    """The generic type set as it would resolve after approval (temporary copy, cached)."""
+    data = copy_data(Path(tempfile.mkdtemp(prefix="buildai-types-")))
+    approve_components(data)
+    resolution = resolve_type_set(read_knowledge(data, verify=False))
+    assert resolution.type_set is not None, resolution.skipped
+    return resolution.type_set

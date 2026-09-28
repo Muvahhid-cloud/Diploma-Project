@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from app.modules.building.issues import Issue, pointer
 from app.modules.building.model import BuildingModel
 from app.modules.building.specification import BuildingSpecification
+from app.modules.building.types import TypeSet
 from app.modules.building.validation import errors, validate_model
 from app.modules.layout.build import BuildError, build_model
 from app.modules.layout.config import DEFAULT_CONFIG, LayoutConfig
@@ -31,6 +32,7 @@ from app.modules.layout.planner import (
 )
 from app.modules.layout.program import Program, expand_program
 from app.modules.layout.regions import build_regions
+from app.modules.layout.types import TypeSetError, config_with_types
 from app.modules.rules.profile import BuildingRulesProfile
 
 AREA_WARNING_THRESHOLD = 0.15  # explicit room targets
@@ -115,8 +117,14 @@ def generate_layout(
     config: LayoutConfig = DEFAULT_CONFIG,
     previous_ids: Mapping[str, uuid.UUID] | None = None,
     material_ids: Iterable[str] | None = None,
+    type_set: TypeSet | None = None,
 ) -> LayoutResult:
     notes: list[str] = []
+    try:
+        # Types replace the matching design defaults; geometry code reads the config as before.
+        config = config_with_types(config, type_set)
+    except TypeSetError as exc:
+        raise LayoutError("LAYOUT_INVALID", f"The type set cannot be used: {exc}", []) from exc
     program = expand_program(spec, profile, config)
     storeys = spec.targets.storeys
     try:
@@ -218,6 +226,7 @@ def generate_layout(
                 seed=seed,
                 id_namespace=id_namespace,
                 previous_ids=previous_ids,
+                type_set=type_set,
             )
         except BuildError as exc:
             failures.append(str(exc))

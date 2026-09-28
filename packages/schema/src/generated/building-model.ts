@@ -8,7 +8,7 @@
  * viewer's layer manager and the schema don't change when MEP/site work lands.
  *
  * This interface was referenced by `BuildingModel`'s JSON-Schema
- * via the `definition` "Layer".
+ * via the `definition` "app__modules__building__enums__Layer".
  */
 export type Layer =
   | "architecture"
@@ -137,9 +137,25 @@ export type FurnitureKind =
   | "basin"
   | "bathtub"
   | "shower";
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "AssemblyKind".
+ */
+export type AssemblyKind = "wall" | "floor" | "roof" | "ceiling";
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "LayerFunction".
+ */
+export type LayerFunction =
+  "structure" | "insulation" | "membrane" | "air_gap" | "screed" | "finish" | "surface";
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "LayerSide".
+ */
+export type LayerSide = "exterior" | "interior" | "top" | "bottom";
 
 export interface BuildingModel {
-  schema_version: "1.0.0";
+  schema_version: "1.1.0";
   id: string;
   building: BuildingInfo;
   units: "m";
@@ -151,6 +167,8 @@ export interface BuildingModel {
   levels: Level[];
   elements: (Wall | Door | Window | Room | Slab | Stair | Roof | Railing | Furniture)[];
   metadata: ModelMetadata;
+  types: TypeSnapshot[];
+  assemblies: AssemblySnapshot[];
 }
 /**
  * This interface was referenced by `BuildingModel`'s JSON-Schema
@@ -193,6 +211,7 @@ export interface Wall {
   origin: Origin;
   locked: boolean;
   semantic_key: string;
+  type_ref: string | null;
   type: "wall";
   dimensions: WallDimensions;
   properties: WallProperties;
@@ -266,6 +285,7 @@ export interface Door {
   origin: Origin;
   locked: boolean;
   semantic_key: string;
+  type_ref: string | null;
   type: "door";
   dimensions: DoorDimensions;
   properties: DoorProperties;
@@ -306,6 +326,7 @@ export interface Window {
   origin: Origin;
   locked: boolean;
   semantic_key: string;
+  type_ref: string | null;
   type: "window";
   dimensions: WindowDimensions;
   properties: WindowProperties;
@@ -345,6 +366,7 @@ export interface Room {
   origin: Origin;
   locked: boolean;
   semantic_key: string;
+  type_ref: string | null;
   type: "room";
   dimensions: RoomDimensions;
   properties: RoomProperties;
@@ -370,6 +392,7 @@ export interface RoomProperties {
    */
   boundary: Vec2[];
   floor_material_id: string | null;
+  ceiling_assembly_ref: string | null;
 }
 /**
  * This interface was referenced by `BuildingModel`'s JSON-Schema
@@ -398,6 +421,7 @@ export interface Slab {
   origin: Origin;
   locked: boolean;
   semantic_key: string;
+  type_ref: string | null;
   type: "slab";
   dimensions: SlabDimensions;
   properties: SlabProperties;
@@ -441,6 +465,7 @@ export interface Stair {
   origin: Origin;
   locked: boolean;
   semantic_key: string;
+  type_ref: string | null;
   type: "stair";
   dimensions: StairDimensions;
   properties: StairProperties;
@@ -484,6 +509,7 @@ export interface Roof {
   origin: Origin;
   locked: boolean;
   semantic_key: string;
+  type_ref: string | null;
   type: "roof";
   dimensions: RoofDimensions;
   properties: RoofProperties;
@@ -528,6 +554,7 @@ export interface Railing {
   origin: Origin;
   locked: boolean;
   semantic_key: string;
+  type_ref: string | null;
   type: "railing";
   dimensions: RailingDimensions;
   properties: RailingProperties;
@@ -567,6 +594,7 @@ export interface Furniture {
   origin: Origin;
   locked: boolean;
   semantic_key: string;
+  type_ref: string | null;
   type: "furniture";
   dimensions: FurnitureDimensions;
   properties: FurnitureProperties;
@@ -595,4 +623,125 @@ export interface FurnitureProperties {
 export interface ModelMetadata {
   source: "fixture" | "layout" | "operations";
   generator: string;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "TypeSnapshot".
+ */
+export interface TypeSnapshot {
+  id: string;
+  family: string;
+  name: string;
+  params:
+    | WallTypeParams
+    | SlabTypeParams
+    | RoofTypeParams
+    | DoorTypeParams
+    | WindowTypeParams
+    | StairTypeParams
+    | RailingTypeParams;
+  assembly_id: string | null;
+  source: string;
+  content_sha256: string;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "WallTypeParams".
+ */
+export interface WallTypeParams {
+  element_type: "wall";
+  wall_kind: WallKind;
+  load_bearing: boolean;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "SlabTypeParams".
+ */
+export interface SlabTypeParams {
+  element_type: "slab";
+  slab_kind: SlabKind;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "RoofTypeParams".
+ */
+export interface RoofTypeParams {
+  element_type: "roof";
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "DoorTypeParams".
+ */
+export interface DoorTypeParams {
+  element_type: "door";
+  door_kind: DoorKind;
+  height: number;
+  thickness: number;
+  material_id: string | null;
+  frame_material_id: string | null;
+  default_width: number | null;
+  width_per_car: number | null;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "WindowTypeParams".
+ */
+export interface WindowTypeParams {
+  element_type: "window";
+  material_id: string | null;
+  frame_material_id: string | null;
+  default_sill: number;
+  default_height: number;
+  default_width: number | null;
+  glazing_ratio: number | null;
+  mullion_spacing: number | null;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "StairTypeParams".
+ */
+export interface StairTypeParams {
+  element_type: "stair";
+  stair_type: StairType;
+  width: number;
+  material_id: string | null;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "RailingTypeParams".
+ */
+export interface RailingTypeParams {
+  element_type: "railing";
+  railing_kind: RailingKind;
+  height: number;
+  post_spacing: number;
+  material_id: string | null;
+}
+/**
+ * Layered build-up. Walls list layers exterior→interior; floors/roofs/ceilings top→bottom.
+ *
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "AssemblySnapshot".
+ */
+export interface AssemblySnapshot {
+  id: string;
+  kind: AssemblyKind;
+  name: string;
+  /**
+   * @minItems 1
+   */
+  layers: Layer1[];
+  total_thickness: number;
+  source: string;
+  content_sha256: string;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "app__modules__building__types__Layer".
+ */
+export interface Layer1 {
+  function: LayerFunction;
+  material_id: string | null;
+  thickness: number;
+  side: LayerSide | null;
 }

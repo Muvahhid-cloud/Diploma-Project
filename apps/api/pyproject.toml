@@ -118,9 +118,9 @@ forbidden_modules = [
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-# Phase 3.5 K1: knowledge is loaded and checked, never consumed. Lift per module only when an
-# approved-knowledge consumer is deliberately introduced (K2+), via registry.approved_items().
-name = "K1: no module consumes the knowledge catalog yet"
+# Knowledge is consumed only by the generation pipeline (K2: approved component types via
+# catalog.resolver). Engines receive plain building.types data and never read the catalog.
+name = "Only the generation pipeline consumes the knowledge catalog"
 type = "forbidden"
 source_modules = [
     "app.core",
@@ -135,12 +135,12 @@ source_modules = [
     "app.modules.quantities",
     "app.modules.costing",
     "app.modules.ai",
-    "app.modules.generation",
     "app.modules.jobs",
     "app.modules.demo",
     "app.modules.health",
 ]
 forbidden_modules = ["app.modules.catalog"]
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "Core does not depend on feature modules"

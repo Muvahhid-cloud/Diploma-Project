@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.modules.building.enums import RoomType
 from app.modules.building.specification import FacadeMaterial, WindowStyle
 
-ENGINE_VERSION = "layout@1.0.0"
+ENGINE_VERSION = "layout@1.1.0"  # 1.1.0: BuildingModel 1.1.0, optional TypeSet (K2)
 
 
 class _Config(BaseModel):

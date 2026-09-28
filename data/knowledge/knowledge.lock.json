@@ -4,6 +4,7 @@
   "entries": {
     "source:buildai-editorial": "919144fc37a640087c488ca40557afee702ed65d5f5c28dfdc8ea5caffbcc522",
     "source:georgievsky-2004": "57b0624f1431271742dce1dfd6bdf7e3ab7526cd491dda3337b761d815da288d",
+    "pack:buildai-generic-types@1": "a0dba9e1e63eda77b7e68081138bad88dbf5ddb66ae75e0f701a1c7604b0c19d",
     "pack:core@1": "a7f9dfadd1fe258868fccc071708de5338f73922a5b029c3574a9a7c31e7bdbb",
     "pack:spds-georgievsky-2004@1": "17aac169df0ff1c795d295e1c27a8b58fc9d2b749aeabc6795da4291be4efdf4",
     "region:generic@1": "105bebba9d07119c64519ad6a18ff4897143bff057e70d8db0b1aa790bdf54b5"

@@ -303,6 +303,16 @@ Determinism: the only randomness is `random.Random(f"{seed}:{skeleton}:{variant}
 
 `tests/layout/`: 10 reference specs (`data/fixtures/specs`, incl. the 280 m² 2-storey 4-bed example, a 3-storey villa, bungalows, a narrow plot, no area given) must validate, be fully reachable, have no rules findings, deliver the program (counts, levels, suites, garage/balcony/terrace, GFA ± 3 %) and match their **golden files** (`data/fixtures/golden/*.golden.json`: footprint, rooms + areas, counts, warnings, model sha256; update deliberately with `pnpm golden`). Hypothesis generates random in-scope specs and asserts invariants, reachability, containment and reproducibility. `data/fixtures/generated-house.model.json` is rendered by the web engine tests.
 
+### 16.6 Component types (layout@1.1.0, Phase 3.5 K2)
+
+`generate_layout(..., type_set: TypeSet | None = None)`. The engine never reads the catalog; the generation pipeline passes an approved, rules-checked `TypeSet` (docs/knowledge.md §3.4) or `None`.
+
+- **Design values**: `layout/types.py: config_with_types(config, type_set)` returns the effective `LayoutConfig`: each value a type defines (wall/slab/roof thickness via assemblies, door width/height, garage door width per car, window presets, service/stair windows, stair width, railing heights and post spacing) replaces the default; roles without a type keep `LayoutConfig`. Values the config holds once (door thickness, post spacing, main and garage roof thickness) must agree across types, otherwise `LAYOUT_INVALID`. The geometry code is unchanged.
+- **Roles**: every generated wall, slab, roof, stair, railing, door and window has a role (`building/types.py TYPE_ROLES`); doors and windows record theirs where the engine chooses them (e.g. `door.wet_room`, `window.service`, `window.stair`).
+- **Attachment**: `build.attach_types` sets `type_ref` and the type's fixed materials, and copies the used types and their assemblies into the model (sorted); rooms and furniture stay untyped. `metadata.generator` names the type pack and mapping.
+- **Determinism and geometry**: with the generic types the effective config equals `LayoutConfig` (tested), so every reference spec generates the same geometry fingerprint typed and untyped (`tests/layout/test_types.py`, also under two `PYTHONHASHSEED`s). The web geometry builders are unchanged (`engine@1`); a web test asserts type metadata never changes the scene hash.
+- `ENGINE_VERSION` is `layout@1.1.0` (models are BuildingModel 1.1.0). The golden files changed only in `engine_version`, the full-model hash and the new fields; every `geometry_sha256` is identical to the pre-K2 baseline.
+
 ### 16.5 Limitations (layout@1.0.0)
 
 - One plan type (double-loaded corridor, street on the south); no L/U-shaped houses except the garage annex, no courtyards, no sloped sites, no basements.

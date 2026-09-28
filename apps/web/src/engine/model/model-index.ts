@@ -1,6 +1,15 @@
 // Lookup structures over a BuildingModel + referential-integrity checks.
 // The index is derived data: it never changes the model.
-import type { BuildingElement, BuildingModel, Level, Opening, Room, Wall } from "./types";
+import type {
+  AssemblySnapshot,
+  BuildingElement,
+  BuildingModel,
+  Level,
+  Opening,
+  Room,
+  TypeSnapshot,
+  Wall,
+} from "./types";
 
 export interface ModelIndex {
   readonly model: BuildingModel;
@@ -15,6 +24,9 @@ export interface ModelIndex {
   readonly hostOf: ReadonlyMap<string, Wall>;
   /** Walls that `bounds` each room. */
   readonly wallsBounding: ReadonlyMap<string, readonly Wall[]>;
+  /** Type and assembly snapshots by id (schema 1.1.0; empty for untyped models). */
+  readonly typesById: ReadonlyMap<string, TypeSnapshot>;
+  readonly assembliesById: ReadonlyMap<string, AssemblySnapshot>;
 }
 
 export class ModelIntegrityError extends Error {
@@ -51,7 +63,12 @@ export function indexModel(model: BuildingModel): ModelIndex {
   const hostOf = new Map<string, Wall>();
   const wallsBounding = new Map<string, Wall[]>();
 
+  const typesById = new Map<string, TypeSnapshot>(model.types.map((t) => [t.id, t]));
+  const assembliesById = new Map<string, AssemblySnapshot>(model.assemblies.map((a) => [a.id, a]));
   for (const el of model.elements) {
+    if (el.type_ref !== null && !typesById.has(el.type_ref)) {
+      issues.push(`${el.type} ${el.name} references unknown type ${el.type_ref}`);
+    }
     if (el.level_id === null || !levelsById.has(el.level_id)) {
       issues.push(`${el.type} ${el.name} references unknown level ${el.level_id}`);
     } else {
@@ -92,6 +109,8 @@ export function indexModel(model: BuildingModel): ModelIndex {
     hostedOpenings,
     hostOf,
     wallsBounding,
+    typesById,
+    assembliesById,
   };
 }
 

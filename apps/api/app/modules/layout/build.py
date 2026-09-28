@@ -68,6 +68,15 @@ from app.modules.building.model import (
 )
 from app.modules.building.primitives import EPS, Rotation, Vec2, Vec3
 from app.modules.building.specification import BuildingSpecification, FinishLevel, WindowStyle
+from app.modules.building.types import (
+    AssemblySnapshot,
+    DoorTypeParams,
+    RailingTypeParams,
+    StairTypeParams,
+    TypeSet,
+    TypeSnapshot,
+    WindowTypeParams,
+)
 from app.modules.layout.config import LayoutConfig
 from app.modules.layout.furnish import furnish
 from app.modules.layout.plan import Rect, Region, Segment, rnd
@@ -118,6 +127,19 @@ class Ids:
 
     def __call__(self, semantic_key: str) -> uuid.UUID:
         return self.previous.get(semantic_key) or uuid.uuid5(self.namespace, semantic_key)
+
+
+DOOR_ROLE = {
+    DoorKind.ENTRANCE: "door.entrance",
+    DoorKind.INTERIOR: "door.interior",
+    DoorKind.SLIDING: "door.sliding",
+    DoorKind.GARAGE: "door.garage",
+}
+WINDOW_STYLE_ROLE = {
+    WindowStyle.STANDARD: "window.standard",
+    WindowStyle.LARGE: "window.large",
+    WindowStyle.PANORAMIC: "window.panoramic",
+}
 
 
 @dataclass
@@ -365,6 +387,7 @@ class _Door:
     kind: DoorKind
     swing: DoorSwing
     material: str
+    role: str  # type role (building/types.py TYPE_ROLES)
 
 
 @dataclass
@@ -377,6 +400,7 @@ class _Window:
     sill: float
     kind: WindowKind
     mullions: int
+    role: str  # type role (building/types.py TYPE_ROLES)
 
 
 def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
@@ -396,6 +420,7 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
         min_width: float,
         prefer: Literal["center", "low", "high"] = "center",
         margin: float | None = None,
+        role: str | None = None,
     ) -> None:
         wall = _wall_on(ctx, level, seg)
         margin = cfg.door_margin if margin is None else margin
@@ -409,7 +434,9 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
         if swing is None:
             ctx.swing += 1
             swing = DoorSwing.LEFT if ctx.swing % 2 else DoorSwing.RIGHT
-        doors.append(_Door(key, wall, offset, width, size[1], kind, swing, material))
+        doors.append(
+            _Door(key, wall, offset, width, size[1], kind, swing, material, role or DOOR_ROLE[kind])
+        )
 
     entrance = (
         max(cfg.entrance_door[0], rules.doors.entrance.min_width_m),
@@ -487,6 +514,7 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
                 if is_wet
                 else rules.doors.interior.min_width_m,
                 prefer=prefer,
+                role="door.wet_room" if is_wet else "door.interior",
             )
 
     if ctx.plan.garage is not None:
@@ -635,13 +663,14 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
         sill: float,
         kind: WindowKind,
         mullions: int,
+        role: str,
     ) -> float:
         wall = _facade_wall(ctx, level, side)
         width = rnd(width)
         offset = wall.place(seg, width, margin=cfg.window_margin)
         if offset is None:
             return 0.0
-        windows.append(_Window(key, wall, offset, width, height, sill, kind, mullions))
+        windows.append(_Window(key, wall, offset, width, height, sill, kind, mullions, role))
         return width * height
 
     def glazing_of(region: Region) -> float:
@@ -695,6 +724,7 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
                         sill,
                         kind,
                         mullions,
+                        WINDOW_STYLE_ROLE[style],
                     )
                     if got > 0:
                         needed -= got
@@ -713,6 +743,7 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
                         sill,
                         WindowKind.CASEMENT,
                         0,
+                        "window.service",
                     )
             elif rtype in (RoomType.CORRIDOR, RoomType.STAIRCASE, RoomType.ENTRANCE) or (
                 region.kind == "void"
@@ -733,6 +764,7 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
                             sill,
                             WindowKind.FIXED,
                             0,
+                            "window.stair",
                         )
                         n += 1
     # Garage side window.
@@ -745,7 +777,17 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
         offset = wall.place(seg, w, margin=cfg.window_margin)
         if offset is not None:
             windows.append(
-                _Window("window:garage:0", wall, offset, w, h, sill, WindowKind.FIXED, 0)
+                _Window(
+                    "window:garage:0",
+                    wall,
+                    offset,
+                    w,
+                    h,
+                    sill,
+                    WindowKind.FIXED,
+                    0,
+                    "window.service",
+                )
             )
 
 
@@ -768,6 +810,7 @@ def build_model(
     id_namespace: uuid.UUID,
     previous_ids: Mapping[str, uuid.UUID] | None = None,
     furniture: bool = True,
+    type_set: TypeSet | None = None,
 ) -> BuildingModel:
     ids = Ids(id_namespace, previous_ids)
     ctx = _Context(plan, spec, profile, config, ids, seed)
@@ -945,6 +988,12 @@ def build_model(
     if furniture:
         elements += furnish(ctx.plan, room_elements, doors_to_spans(doors), levels, ids)
 
+    roles = {d.key: d.role for d in doors} | {w.key: w.role for w in windows}
+    elements, types, assemblies = attach_types(elements, roles, type_set)
+    generator = f"{config.engine_version} · rules {profile.ref}"
+    if type_set is not None:
+        generator += f" · types {type_set.source} {type_set.mapping}"
+
     return BuildingModel(
         schema_version=SCHEMA_VERSION,
         id=ids("model"),
@@ -959,10 +1008,74 @@ def build_model(
         seed=seed,
         levels=levels,
         elements=elements,
-        metadata=ModelMetadata(
-            source="layout", generator=f"{config.engine_version} · rules {profile.ref}"
-        ),
+        metadata=ModelMetadata(source="layout", generator=generator),
+        types=types,
+        assemblies=assemblies,
     )
+
+
+def element_role(el: Element, recorded: Mapping[str, str]) -> str | None:
+    """The type role of a generated element (doors/windows: recorded while building them)."""
+    key = el.semantic_key
+    if isinstance(el, Wall):
+        return "wall.exterior" if el.properties.wall_kind == WallKind.EXTERIOR else "wall.interior"
+    if isinstance(el, Slab):
+        if key == "slab:ground":
+            return "slab.ground"
+        if key == "slab:terrace":
+            return "slab.terrace"
+        if key.startswith("slab:balcony_"):
+            return "slab.balcony"
+        return "slab.floor"
+    if isinstance(el, Roof):
+        return "roof.garage" if key == "roof:garage" else "roof.main"
+    if isinstance(el, Stair):
+        return "stair.main"
+    if isinstance(el, Railing):
+        return "railing.balcony" if key.startswith("railing:balcony_") else "railing.stair"
+    if isinstance(el, Door | Window):
+        return recorded.get(key)
+    return None
+
+
+def attach_types(
+    elements: list[Element], recorded: Mapping[str, str], type_set: TypeSet | None
+) -> tuple[list[Element], list[TypeSnapshot], list[AssemblySnapshot]]:
+    """Give every element the type of its role and copy the used types into the model.
+
+    Fixed materials come from the type; dimensions already come from the effective config
+    (layout/types.py), so an element and its type agree by construction (validate_model checks).
+    """
+    if type_set is None:
+        return elements, [], []
+    out: list[Element] = []
+    used: dict[str, TypeSnapshot] = {}
+    for el in elements:
+        role = element_role(el, recorded)
+        t = type_set.type_for(role) if role is not None else None
+        if t is None:
+            out.append(el)
+            continue
+        used[t.id] = t
+        update: dict[str, object] = {"type_ref": t.id}
+        p = t.params
+        # Doors and windows: leaf/glazing and frame materials are fixed by their type.
+        if (
+            isinstance(el, Door | Window)
+            and isinstance(p, DoorTypeParams | WindowTypeParams)
+            and el.type == p.element_type
+        ):
+            update["material_id"] = p.material_id
+            update["properties"] = el.properties.model_copy(
+                update={"frame_material_id": p.frame_material_id}
+            )
+        elif isinstance(el, Stair | Railing) and isinstance(p, StairTypeParams | RailingTypeParams):
+            update["material_id"] = p.material_id
+        out.append(el.model_copy(update=update))
+    types = [used[k] for k in sorted(used)]
+    assembly_ids = sorted({t.assembly_id for t in types if t.assembly_id is not None})
+    assemblies = [a for a in (type_set.assembly(i) for i in assembly_ids) if a is not None]
+    return out, types, assemblies
 
 
 def doors_to_spans(doors: list[_Door]) -> list[tuple[int, Point, Point]]:

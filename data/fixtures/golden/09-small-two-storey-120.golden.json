@@ -1,5 +1,5 @@
 {
-  "engine_version": "layout@1.0.0",
+  "engine_version": "layout@1.1.0",
   "seed": 0,
   "footprint_m": [
     5.5,
@@ -92,6 +92,6 @@
     "LAYOUT_AREA_DEVIATION",
     "LAYOUT_AREA_DEVIATION"
   ],
-  "model_sha256": "971812f0a876493dd3b8623e09e43ea75912ccd63e2fdae652894eb8a31f9efa",
+  "model_sha256": "c0d2835a67de38f794434167560e8c4e52672be8db4148a930be8f123da660bb",
   "geometry_sha256": "bd73141e56dcdc17945ba8facac8a4fb303aae57f4507da701dfa68b48d996a1"
 }

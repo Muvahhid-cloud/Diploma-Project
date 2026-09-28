@@ -26,6 +26,7 @@ from app.modules.ai.context import (
     element_digest,
 )
 from app.modules.auth.models import User
+from app.modules.building.migrations import load_model
 from app.modules.building.model import BuildingModel
 from app.modules.building.specification import BuildingSpecification
 from app.modules.building.summary import ModelSummary
@@ -163,7 +164,7 @@ async def load_scope(
     row = await VersionRepository(session).get(project.id, vid) if vid else None
     if vid is not None and row is None:
         raise NotFoundError("Version not found")
-    model = BuildingModel.model_validate(row.model) if row else None
+    model = load_model(row.model) if row else None
     spec = BuildingSpecification.model_validate(row.spec) if row and row.spec else None
     context = build_project_context(
         project_id=project.id,

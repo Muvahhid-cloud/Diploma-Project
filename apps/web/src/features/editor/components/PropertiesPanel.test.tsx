@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { bySemanticKey, demoIndex } from "@/engine/test-fixtures";
+import { parseBuildingModel } from "@/engine/model/parse";
+import { bySemanticKey, demoIndex, typedDemoModelJson } from "@/engine/test-fixtures";
 import { useSelectionStore } from "@/stores/selection-store";
 
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -32,6 +33,20 @@ describe("PropertiesPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "W-G01 (Exterior wall)" }));
     expect(useSelectionStore.getState().selectedId).toBe(bySemanticKey(index.model, "wall:G-S").id);
     expect(await screen.findByRole("heading", { name: "W-G01" })).toBeInTheDocument();
+  });
+
+  it("shows the component type and its assembly layers", () => {
+    const typed = parseBuildingModel(typedDemoModelJson());
+    useSelectionStore.getState().select(bySemanticKey(typed.model, "wall:G-S").id);
+    render(<PropertiesPanel index={typed} />);
+    expect(screen.getByText("Component type", { selector: "dt" }).nextSibling).toHaveTextContent(
+      "Test exterior wall",
+    );
+    expect(screen.getByText("Assembly · Test exterior wall 300")).toBeInTheDocument();
+    expect(screen.getByText("1. Structure").nextSibling).toHaveTextContent(
+      "Unspecified material · 0.28 m",
+    );
+    expect(screen.getByText("Catalog source").nextSibling).toHaveTextContent("test-types@1");
   });
 
   it("clears the selection", async () => {

@@ -1,7 +1,9 @@
 """Spec -> layout -> checks -> new version: the step shared by the spec-form job (Phase 2) and
 AI generation (Phase 3). It never interprets language and contains no layout logic itself.
 
-    layout engine (tier-3 feasibility + model invariants, in a worker thread)
+    approved component types (catalog resolver, K2; none approved = untyped)
+      -> type set vs rules profile (invalid types are refused, never resized)
+      -> layout engine (tier-3 feasibility + model invariants, in a worker thread)
       -> final model validation (errors abort) -> rules findings -> immutable version
 """
 
@@ -17,9 +19,12 @@ from app.modules.auth.models import User
 from app.modules.building.issues import Issue, errors
 from app.modules.building.specification import BuildingSpecification
 from app.modules.building.validation import validate_model
+from app.modules.catalog.loader import load_knowledge
+from app.modules.catalog.resolver import resolve_type_set
 from app.modules.layout.engine import LayoutError, LayoutResult, generate_layout
 from app.modules.projects.models import Project
 from app.modules.rules.model_checks import check_model
+from app.modules.rules.type_checks import check_type_set
 from app.modules.versions.models import ProjectVersion
 from app.modules.versions.schemas import GenerationProvenance, GenerationReport
 from app.modules.versions.service import VersionService
@@ -61,6 +66,15 @@ async def layout_and_save(
     project_id: uuid.UUID = project.id
     profile = rules_profile(data_dir, project.rules_profile_id)
     materials = material_ids(data_dir)
+    type_set = resolve_type_set(load_knowledge(data_dir)).type_set
+    if type_set is not None:
+        type_issues = check_type_set(type_set, profile)
+        if type_issues:
+            raise LayoutError(
+                "LAYOUT_INFEASIBLE",
+                "The approved component types do not meet the rules profile",
+                type_issues,
+            )
     await on_stage("layout")
     result = await asyncio.to_thread(
         generate_layout,
@@ -69,6 +83,7 @@ async def layout_and_save(
         id_namespace=project_id,
         seed=seed,
         material_ids=materials,
+        type_set=type_set,
     )
     await on_stage("checking")
     model_errors = errors(validate_model(result.model, material_ids=materials))

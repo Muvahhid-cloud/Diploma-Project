@@ -1,7 +1,67 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$comment": "GENERATED from Pydantic (schema_version 1.0.0). Do not edit.",
+  "$comment": "GENERATED from Pydantic (schema_version 1.1.0). Do not edit.",
   "$defs": {
+    "AssemblyKind": {
+      "enum": [
+        "wall",
+        "floor",
+        "roof",
+        "ceiling"
+      ],
+      "title": "AssemblyKind",
+      "type": "string"
+    },
+    "AssemblySnapshot": {
+      "additionalProperties": false,
+      "description": "Layered build-up. Walls list layers exterior→interior; floors/roofs/ceilings top→bottom.",
+      "properties": {
+        "id": {
+          "maxLength": 96,
+          "pattern": "^assembly\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/AssemblyKind"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "layers": {
+          "items": {
+            "$ref": "#/$defs/app__modules__building__types__Layer"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "total_thickness": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "source": {
+          "maxLength": 80,
+          "pattern": "^[a-z][a-z0-9-]*@[1-9][0-9]*$",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "layers",
+        "total_thickness",
+        "source",
+        "content_sha256"
+      ],
+      "title": "AssemblySnapshot",
+      "type": "object"
+    },
     "BuildingInfo": {
       "additionalProperties": false,
       "properties": {
@@ -41,7 +101,7 @@
           "type": "string"
         },
         "layer": {
-          "$ref": "#/$defs/Layer"
+          "$ref": "#/$defs/app__modules__building__enums__Layer"
         },
         "level_id": {
           "anyOf": [
@@ -90,6 +150,19 @@
           "minLength": 1,
           "type": "string"
         },
+        "type_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "door",
           "default": "door",
@@ -114,6 +187,7 @@
         "origin",
         "locked",
         "semantic_key",
+        "type_ref",
         "type",
         "dimensions",
         "properties"
@@ -195,6 +269,87 @@
       "title": "DoorSwing",
       "type": "string"
     },
+    "DoorTypeParams": {
+      "additionalProperties": false,
+      "properties": {
+        "element_type": {
+          "const": "door",
+          "default": "door",
+          "type": "string"
+        },
+        "door_kind": {
+          "$ref": "#/$defs/DoorKind"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "thickness": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "material_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frame_material_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "default_width": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "width_per_car": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "element_type",
+        "door_kind",
+        "height",
+        "thickness",
+        "material_id",
+        "frame_material_id",
+        "default_width",
+        "width_per_car"
+      ],
+      "title": "DoorTypeParams",
+      "type": "object"
+    },
     "Furniture": {
       "additionalProperties": false,
       "description": "Furniture/fixture placeholder. position = base center on the floor.",
@@ -209,7 +364,7 @@
           "type": "string"
         },
         "layer": {
-          "$ref": "#/$defs/Layer"
+          "$ref": "#/$defs/app__modules__building__enums__Layer"
         },
         "level_id": {
           "anyOf": [
@@ -258,6 +413,19 @@
           "minLength": 1,
           "type": "string"
         },
+        "type_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "furniture",
           "default": "furniture",
@@ -282,6 +450,7 @@
         "origin",
         "locked",
         "semantic_key",
+        "type_ref",
         "type",
         "dimensions",
         "properties"
@@ -361,19 +530,27 @@
       "title": "FurnitureProperties",
       "type": "object"
     },
-    "Layer": {
-      "description": "Discipline layer. Every element belongs to exactly one.\n\nPhase 1 populates architecture, structure and furniture; the others are reserved so the\nviewer's layer manager and the schema don't change when MEP/site work lands.",
+    "LayerFunction": {
       "enum": [
-        "architecture",
         "structure",
-        "furniture",
-        "plumbing",
-        "electrical",
-        "hvac",
-        "fire_safety",
-        "landscaping"
+        "insulation",
+        "membrane",
+        "air_gap",
+        "screed",
+        "finish",
+        "surface"
       ],
-      "title": "Layer",
+      "title": "LayerFunction",
+      "type": "string"
+    },
+    "LayerSide": {
+      "enum": [
+        "exterior",
+        "interior",
+        "top",
+        "bottom"
+      ],
+      "title": "LayerSide",
       "type": "string"
     },
     "Level": {
@@ -463,7 +640,7 @@
           "type": "string"
         },
         "layer": {
-          "$ref": "#/$defs/Layer"
+          "$ref": "#/$defs/app__modules__building__enums__Layer"
         },
         "level_id": {
           "anyOf": [
@@ -512,6 +689,19 @@
           "minLength": 1,
           "type": "string"
         },
+        "type_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "railing",
           "default": "railing",
@@ -536,6 +726,7 @@
         "origin",
         "locked",
         "semantic_key",
+        "type_ref",
         "type",
         "dimensions",
         "properties"
@@ -592,6 +783,48 @@
       "title": "RailingProperties",
       "type": "object"
     },
+    "RailingTypeParams": {
+      "additionalProperties": false,
+      "properties": {
+        "element_type": {
+          "const": "railing",
+          "default": "railing",
+          "type": "string"
+        },
+        "railing_kind": {
+          "$ref": "#/$defs/RailingKind"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "post_spacing": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "material_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "element_type",
+        "railing_kind",
+        "height",
+        "post_spacing",
+        "material_id"
+      ],
+      "title": "RailingTypeParams",
+      "type": "object"
+    },
     "Relationship": {
       "additionalProperties": false,
       "properties": {
@@ -639,7 +872,7 @@
           "type": "string"
         },
         "layer": {
-          "$ref": "#/$defs/Layer"
+          "$ref": "#/$defs/app__modules__building__enums__Layer"
         },
         "level_id": {
           "anyOf": [
@@ -688,6 +921,19 @@
           "minLength": 1,
           "type": "string"
         },
+        "type_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "roof",
           "default": "roof",
@@ -712,6 +958,7 @@
         "origin",
         "locked",
         "semantic_key",
+        "type_ref",
         "type",
         "dimensions",
         "properties"
@@ -787,6 +1034,21 @@
       "title": "RoofType",
       "type": "string"
     },
+    "RoofTypeParams": {
+      "additionalProperties": false,
+      "properties": {
+        "element_type": {
+          "const": "roof",
+          "default": "roof",
+          "type": "string"
+        }
+      },
+      "required": [
+        "element_type"
+      ],
+      "title": "RoofTypeParams",
+      "type": "object"
+    },
     "Room": {
       "additionalProperties": false,
       "description": "A space (not a solid). position = origin of `boundary`.",
@@ -801,7 +1063,7 @@
           "type": "string"
         },
         "layer": {
-          "$ref": "#/$defs/Layer"
+          "$ref": "#/$defs/app__modules__building__enums__Layer"
         },
         "level_id": {
           "anyOf": [
@@ -850,6 +1112,19 @@
           "minLength": 1,
           "type": "string"
         },
+        "type_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "room",
           "default": "room",
@@ -874,6 +1149,7 @@
         "origin",
         "locked",
         "semantic_key",
+        "type_ref",
         "type",
         "dimensions",
         "properties"
@@ -932,13 +1208,27 @@
               "type": "null"
             }
           ]
+        },
+        "ceiling_assembly_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^assembly\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
         "room_type",
         "zone",
         "boundary",
-        "floor_material_id"
+        "floor_material_id",
+        "ceiling_assembly_ref"
       ],
       "title": "RoomProperties",
       "type": "object"
@@ -1009,7 +1299,7 @@
           "type": "string"
         },
         "layer": {
-          "$ref": "#/$defs/Layer"
+          "$ref": "#/$defs/app__modules__building__enums__Layer"
         },
         "level_id": {
           "anyOf": [
@@ -1058,6 +1348,19 @@
           "minLength": 1,
           "type": "string"
         },
+        "type_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "slab",
           "default": "slab",
@@ -1082,6 +1385,7 @@
         "origin",
         "locked",
         "semantic_key",
+        "type_ref",
         "type",
         "dimensions",
         "properties"
@@ -1149,6 +1453,25 @@
       "title": "SlabProperties",
       "type": "object"
     },
+    "SlabTypeParams": {
+      "additionalProperties": false,
+      "properties": {
+        "element_type": {
+          "const": "slab",
+          "default": "slab",
+          "type": "string"
+        },
+        "slab_kind": {
+          "$ref": "#/$defs/SlabKind"
+        }
+      },
+      "required": [
+        "element_type",
+        "slab_kind"
+      ],
+      "title": "SlabTypeParams",
+      "type": "object"
+    },
     "Stair": {
       "additionalProperties": false,
       "description": "Straight flight. position = bottom corner at the first riser; the flight runs along local\n+x (rotation.z) and spans local +y by `width`. n risers, n-1 treads.",
@@ -1163,7 +1486,7 @@
           "type": "string"
         },
         "layer": {
-          "$ref": "#/$defs/Layer"
+          "$ref": "#/$defs/app__modules__building__enums__Layer"
         },
         "level_id": {
           "anyOf": [
@@ -1212,6 +1535,19 @@
           "minLength": 1,
           "type": "string"
         },
+        "type_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "stair",
           "default": "stair",
@@ -1236,6 +1572,7 @@
         "origin",
         "locked",
         "semantic_key",
+        "type_ref",
         "type",
         "dimensions",
         "properties"
@@ -1313,6 +1650,132 @@
       "title": "StairType",
       "type": "string"
     },
+    "StairTypeParams": {
+      "additionalProperties": false,
+      "properties": {
+        "element_type": {
+          "const": "stair",
+          "default": "stair",
+          "type": "string"
+        },
+        "stair_type": {
+          "$ref": "#/$defs/StairType"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "material_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "element_type",
+        "stair_type",
+        "width",
+        "material_id"
+      ],
+      "title": "StairTypeParams",
+      "type": "object"
+    },
+    "TypeSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 96,
+          "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+          "type": "string"
+        },
+        "family": {
+          "maxLength": 96,
+          "pattern": "^family\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "params": {
+          "discriminator": {
+            "mapping": {
+              "door": "#/$defs/DoorTypeParams",
+              "railing": "#/$defs/RailingTypeParams",
+              "roof": "#/$defs/RoofTypeParams",
+              "slab": "#/$defs/SlabTypeParams",
+              "stair": "#/$defs/StairTypeParams",
+              "wall": "#/$defs/WallTypeParams",
+              "window": "#/$defs/WindowTypeParams"
+            },
+            "propertyName": "element_type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/WallTypeParams"
+            },
+            {
+              "$ref": "#/$defs/SlabTypeParams"
+            },
+            {
+              "$ref": "#/$defs/RoofTypeParams"
+            },
+            {
+              "$ref": "#/$defs/DoorTypeParams"
+            },
+            {
+              "$ref": "#/$defs/WindowTypeParams"
+            },
+            {
+              "$ref": "#/$defs/StairTypeParams"
+            },
+            {
+              "$ref": "#/$defs/RailingTypeParams"
+            }
+          ]
+        },
+        "assembly_id": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^assembly\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "maxLength": 80,
+          "pattern": "^[a-z][a-z0-9-]*@[1-9][0-9]*$",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "family",
+        "name",
+        "params",
+        "assembly_id",
+        "source",
+        "content_sha256"
+      ],
+      "title": "TypeSnapshot",
+      "type": "object"
+    },
     "Vec2": {
       "additionalProperties": false,
       "properties": {
@@ -1365,7 +1828,7 @@
           "type": "string"
         },
         "layer": {
-          "$ref": "#/$defs/Layer"
+          "$ref": "#/$defs/app__modules__building__enums__Layer"
         },
         "level_id": {
           "anyOf": [
@@ -1414,6 +1877,19 @@
           "minLength": 1,
           "type": "string"
         },
+        "type_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "wall",
           "default": "wall",
@@ -1438,6 +1914,7 @@
         "origin",
         "locked",
         "semantic_key",
+        "type_ref",
         "type",
         "dimensions",
         "properties"
@@ -1534,6 +2011,29 @@
       "title": "WallProperties",
       "type": "object"
     },
+    "WallTypeParams": {
+      "additionalProperties": false,
+      "properties": {
+        "element_type": {
+          "const": "wall",
+          "default": "wall",
+          "type": "string"
+        },
+        "wall_kind": {
+          "$ref": "#/$defs/WallKind"
+        },
+        "load_bearing": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "element_type",
+        "wall_kind",
+        "load_bearing"
+      ],
+      "title": "WallTypeParams",
+      "type": "object"
+    },
     "Window": {
       "additionalProperties": false,
       "description": "Window hosted by a wall. position (host-wall-local): x = start offset, z = sill height.",
@@ -1548,7 +2048,7 @@
           "type": "string"
         },
         "layer": {
-          "$ref": "#/$defs/Layer"
+          "$ref": "#/$defs/app__modules__building__enums__Layer"
         },
         "level_id": {
           "anyOf": [
@@ -1597,6 +2097,19 @@
           "minLength": 1,
           "type": "string"
         },
+        "type_ref": {
+          "anyOf": [
+            {
+              "maxLength": 96,
+              "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "window",
           "default": "window",
@@ -1621,6 +2134,7 @@
         "origin",
         "locked",
         "semantic_key",
+        "type_ref",
         "type",
         "dimensions",
         "properties"
@@ -1689,6 +2203,97 @@
       "title": "WindowProperties",
       "type": "object"
     },
+    "WindowTypeParams": {
+      "additionalProperties": false,
+      "properties": {
+        "element_type": {
+          "const": "window",
+          "default": "window",
+          "type": "string"
+        },
+        "material_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frame_material_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "default_sill": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "default_height": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "default_width": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "glazing_ratio": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mullion_spacing": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "element_type",
+        "material_id",
+        "frame_material_id",
+        "default_sill",
+        "default_height",
+        "default_width",
+        "glazing_ratio",
+        "mullion_spacing"
+      ],
+      "title": "WindowTypeParams",
+      "type": "object"
+    },
     "Zone": {
       "enum": [
         "public",
@@ -1699,12 +2304,70 @@
       ],
       "title": "Zone",
       "type": "string"
+    },
+    "app__modules__building__enums__Layer": {
+      "description": "Discipline layer. Every element belongs to exactly one.\n\nPhase 1 populates architecture, structure and furniture; the others are reserved so the\nviewer's layer manager and the schema don't change when MEP/site work lands.",
+      "enum": [
+        "architecture",
+        "structure",
+        "furniture",
+        "plumbing",
+        "electrical",
+        "hvac",
+        "fire_safety",
+        "landscaping"
+      ],
+      "title": "Layer",
+      "type": "string"
+    },
+    "app__modules__building__types__Layer": {
+      "additionalProperties": false,
+      "properties": {
+        "function": {
+          "$ref": "#/$defs/LayerFunction"
+        },
+        "material_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thickness": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "side": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LayerSide"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "function",
+        "material_id",
+        "thickness",
+        "side"
+      ],
+      "title": "Layer",
+      "type": "object"
     }
   },
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "1.0.0",
+      "const": "1.1.0",
       "type": "string"
     },
     "id": {
@@ -1788,6 +2451,18 @@
     },
     "metadata": {
       "$ref": "#/$defs/ModelMetadata"
+    },
+    "types": {
+      "items": {
+        "$ref": "#/$defs/TypeSnapshot"
+      },
+      "type": "array"
+    },
+    "assemblies": {
+      "items": {
+        "$ref": "#/$defs/AssemblySnapshot"
+      },
+      "type": "array"
     }
   },
   "required": [
@@ -1799,7 +2474,9 @@
     "seed",
     "levels",
     "elements",
-    "metadata"
+    "metadata",
+    "types",
+    "assemblies"
   ],
   "title": "BuildingModel",
   "type": "object"

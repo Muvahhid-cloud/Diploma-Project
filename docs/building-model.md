@@ -1,6 +1,6 @@
 # Building Model
 
-Status: **Implemented for Phase 3 (v0.5)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
+Status: **Implemented for Phase 3.5 K2 (v0.6)** · Canonical code: `apps/api/app/modules/building/` · Generated: `packages/schema/`
 
 There are **two** schemas, deliberately separated:
 
@@ -111,19 +111,21 @@ Every issue has the same shape (`building/issues.py`): `{ severity, code, path (
 
 ## 3. BuildingModel (resolved)
 
-Implemented in `apps/api/app/modules/building/{primitives,enums,elements,model}.py` (schema_version **1.0.0**). JSON Schema, TS types and the Zod validator in `packages/schema` are generated from these classes (`pnpm schema`).
+Implemented in `apps/api/app/modules/building/{primitives,enums,elements,types,model}.py` (schema_version **1.1.0**; 1.0.0 documents are upgraded on read, §8). JSON Schema, TS types and the Zod validator in `packages/schema` are generated from these classes (`pnpm schema`).
 
 ```jsonc
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "id": "uuid",                       // the "building" object id
   "building": { "name": "Demo family house", "building_type": "single_family_house", "description": "…" },
   "units": "m",
-  "engine_version": "layout@1.0.0",   // "fixture@1" for the hand-authored demo
+  "engine_version": "layout@1.1.0",   // "fixture@1" for the hand-authored demo
   "seed": 0,                          // layout seed (null for fixtures)
   "levels": [ Level, ... ],           // the "floor" objects
   "elements": [ Element, ... ],       // discriminated union on "type"
-  "metadata": { "source": "fixture" | "layout" | "operations", "generator": "layout@1.0.0 · rules generic-residential@1" }
+  "metadata": { "source": "fixture" | "layout" | "operations", "generator": "layout@1.1.0 · rules generic-residential@1" },
+  "types": [ TypeSnapshot, ... ],     // 1.1.0: every type an element refers to (sorted by id; §3.5)
+  "assemblies": [ AssemblySnapshot, ... ]  // 1.1.0: every assembly a type or room refers to
 }
 ```
 
@@ -154,13 +156,14 @@ The spec a model was generated from is stored next to it in the project version 
   "relationships": [ { "kind": "bounds", "target_id": "uuid" } ],
   "origin": "generated" | "user",
   "locked": false,
-  "semantic_key": "wall:G-S"
+  "semantic_key": "wall:G-S",
+  "type_ref": "type.wall.generic_exterior_300" | null   // 1.1.0: id of a TypeSnapshot (§3.5)
 }
 ```
 
 Absolute elevation = `level.elevation + position.z`. Polygon properties (room boundary, slab/roof outline) are relative to `position`, rotated by `rotation.z`. All models are `extra="forbid"`; lengths are rounded to 1 mm, areas to 0.01 m², angles to 1e-6 rad on validation.
 
-### 3.3 Element types (implemented in schema 1.0.0)
+### 3.3 Element types (implemented in schema 1.0.0; unchanged in 1.1.0)
 
 | type | usual layer | position = | dimensions | properties |
 |---|---|---|---|---|
@@ -194,6 +197,31 @@ Directed, typed edges stored on the source element; targets must exist (API vali
 
 Level membership is `level_id` (not a relationship).
 
+Rooms additionally carry `properties.ceiling_assembly_ref` (1.1.0, `null` = none): an assembly of kind `ceiling`. Nothing assigns ceilings yet.
+
+### 3.5 Types and assemblies (1.1.0, Phase 3.5 K2)
+
+Code: `building/types.py`. A model is **self-contained**: every type or assembly an element refers to is copied into the model when it is generated, with the catalog record it came from (`source`, e.g. `buildai-generic-types@1`) and that record's `content_sha256`. Versions stay reproducible when the catalog moves on.
+
+```jsonc
+// TypeSnapshot
+{ "id": "type.door.generic_interior", "family": "family.door.hinged", "name": "Interior door",
+  "params": { "element_type": "door", "door_kind": "interior", "height": 2.1, "thickness": 0.06,
+              "material_id": "wood", "frame_material_id": "window_frame", "default_width": 0.9 },
+  "assembly_id": null, "source": "buildai-generic-types@1", "content_sha256": "…" }
+// AssemblySnapshot (walls: layers exterior→interior; floors/roofs/ceilings: top→bottom)
+{ "id": "assembly.wall.generic_exterior_300", "kind": "wall", "name": "Generic exterior wall 300",
+  "layers": [ { "function": "structure", "material_id": null, "thickness": 0.3, "side": null } ],
+  "total_thickness": 0.3, "source": "buildai-generic-types@1", "content_sha256": "…" }
+```
+
+- `params` is typed per element type (wall, slab, roof, door, window, stair, railing). **Fixed** parameters must match every element of the type; **defaults** (`default_*`, `glazing_ratio`, `mullion_spacing`, `width_per_car`) are the design values the layout engine starts from and an element may differ (a door narrowed to fit a short wall, a window lowered under a lintel).
+- Walls, slabs and roofs name an assembly of kind wall / floor / roof; their `thickness` equals the assembly's `total_thickness`.
+- `Layer`: `function` (structure, insulation, membrane, air_gap, screed, finish, surface), `material_id` (material library id; `null` = unspecified), `thickness` (0 only for `surface`), optional `side`. Assemblies are the quantities basis for Phase 4 (volume per layer, finish areas); they carry no item codes or prices.
+- Wall face finishes stay on the wall instance (`finish_left_id` / `finish_right_id`): they depend on the rooms on each side, not on the wall type.
+- Untyped elements (`type_ref: null`) are valid; 1.0.0 documents upgrade to untyped 1.1.0.
+- `TYPE_ROLES` names the roles the layout engine fills (`wall.exterior`, `door.wet_room`, `window.stair`, …); a catalog role mapping assigns one type per role (docs/knowledge.md §3.4).
+
 ---
 
 ## 4. Invariants (enforced by `building/validation.py`)
@@ -209,8 +237,12 @@ Errors (model rejected):
 7. Slabs: CCW simple outline, holes inside, `area` = outline − holes. Pitched roofs need a rectangular outline.
 8. Stairs: `risers × riser_height ≈ rise_total` and `(risers − 1) × tread_depth ≈ run_length` (±0.5 mm rounding per riser); start on `from_level`, reach the next level; `rise_total` = level difference.
 9. Railings no steeper than 45°. Pydantic: all dimensions finite and > 0 (area/overhang ≥ 0).
+10. Types (`building/type_validation.py`): unique snapshot ids (`TYPE_SNAPSHOT_DUPLICATE`); every `type_ref` is carried by the model (`TYPE_REF_UNKNOWN`) and is a type for the element's type (`TYPE_ELEMENT_MISMATCH`).
+11. A wall/slab/roof type names a carried assembly of the right kind (`TYPE_ASSEMBLY_UNKNOWN`); other types name none (`TYPE_ASSEMBLY_UNEXPECTED`); an assembly's layers add up to its total (`ASSEMBLY_THICKNESS_SUM`); layer and type materials exist (`UNKNOWN_MATERIAL`).
+12. Elements match the FIXED parameters of their type, including thickness = assembly total (`TYPE_PARAM_MISMATCH`, listing every difference).
+13. A room's `ceiling_assembly_ref` names a carried ceiling assembly (`CEILING_ASSEMBLY_UNKNOWN`).
 
-Warnings (reported, model accepted): room not fully supported by a slab; habitable room (living, dining, kitchen, bedroom, study) without a window or glazed door on its own boundary; furniture outside every room; **room not reachable from the entrance** (`ROOM_UNREACHABLE`: graph over doors — `connects` computed geometrically —, open boundaries where no wall axis runs along a shared room edge for ≥ 0.6 m, and stairs linking the room at the bottom to the room at the top landing; start = rooms with an `entrance` door, else any exterior door); no exterior door at all (`NO_ENTRANCE`).
+Warnings (reported, model accepted): a type or assembly snapshot nothing uses (`SNAPSHOT_UNUSED`); room not fully supported by a slab; habitable room (living, dining, kitchen, bedroom, study) without a window or glazed door on its own boundary; furniture outside every room; **room not reachable from the entrance** (`ROOM_UNREACHABLE`: graph over doors — `connects` computed geometrically —, open boundaries where no wall axis runs along a shared room edge for ≥ 0.6 m, and stairs linking the room at the bottom to the room at the top landing; start = rooms with an `entrance` door, else any exterior door); no exterior door at all (`NO_ENTRANCE`).
 
 The layout engine rejects its own candidates on any error **or** `ROOM_UNREACHABLE`, so generated models always satisfy them; Hypothesis properties over random specs check this (`tests/layout/test_invariants.py`). Not yet checked: stair headroom, wet-room fixture placement.
 
@@ -270,7 +302,12 @@ Element ids are `uuid5(id_namespace, semantic_key)`. The generation service uses
 ## 8. Schema evolution
 
 - `schema_version` follows semver. Additive optional fields → minor. Anything else → major with a migration function in `building/migrations/` (`v1_to_v2(doc: dict) -> dict`).
-- Stored documents are upgraded on read; tests keep one fixture per historical version.
+- Stored documents are upgraded on read; tests keep one fixture per historical version (`data/fixtures/historical/*.v1.0.0.model.json`).
+- **Every read of a stored or file-based model goes through `building.migrations.load_model`** (version rows, AI tools, demo fixture): it applies the pure, idempotent upgrade steps (`v1_0_0_to_v1_1_0.upgrade`: explicit empty `types`/`assemblies`, `type_ref: null`, `ceiling_assembly_ref: null`) and validates. Stored rows are never rewritten: their JSON, `schema_version` column and `model_hash` stay as written (versions are immutable); the API serves the current schema. The web therefore only ever sees 1.1.0 (its validator uses the serialization schema, where defaulted fields are required).
+
+### 8.1 Geometry fingerprint
+
+`building.fingerprint.geometry_sha256(model)` hashes levels and elements without type metadata (`type_ref`, `ceiling_assembly_ref`, `types`, `assemblies`) and without document fields (id, versions, metadata). Golden files record it next to the full-model hash: schema upgrades and type assignment must leave it unchanged (K2 verified it for all reference specs, typed and untyped, and for the upgraded 1.0.0 fixtures).
 - After changing Pydantic models: `pnpm schema` regenerates `packages/schema` (JSON Schema → TS types via json-schema-to-typescript; the Zod validator is built at runtime from the same JSON Schema with `z.fromJSONSchema`). After changing the demo fixture script: `pnpm fixtures`. Pytest fails if the committed JSON Schema or fixture is stale; CI fails if the generated TS is stale.
 
 ## 9. IFC alignment (future)

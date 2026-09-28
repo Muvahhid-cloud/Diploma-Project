@@ -17,6 +17,7 @@ from app.modules.building.elements import ElementType
 from app.modules.building.enums import RelationshipKind, RoomType
 from app.modules.building.issues import Issue, pointer
 from app.modules.building.model import BuildingInfo
+from app.modules.catalog.component_integrity import check_components
 from app.modules.catalog.provenance import (
     Provenanced,
     SourceKind,
@@ -51,10 +52,14 @@ def _issue(code: str, path: str, message: str, suggestion: str | None = None) ->
 
 
 def check_registry(
-    registry: KnowledgeRegistry, *, known_rules_profiles: frozenset[str]
+    registry: KnowledgeRegistry,
+    *,
+    known_rules_profiles: frozenset[str],
+    known_materials: frozenset[str] | None = None,
 ) -> list[Issue]:
     issues: list[Issue] = []
     issues += _check_packs(registry)
+    issues += check_components(registry, known_materials=known_materials)
     for pack in registry.packs.values():
         issues += _check_provenance(registry, pack)
         issues += _check_items(registry, pack)
@@ -143,6 +148,14 @@ def _provenanced(pack: LoadedPack) -> Iterator[tuple[str, Provenanced]]:
         yield pointer("packs", pack.ref, "localized", f"{lt.term_id}/{lt.locale}"), lt
     for d in pack.drawing_profiles:
         yield pointer("packs", pack.ref, "drawing_profiles", d.ref), d
+    for family in pack.families:
+        yield pointer("packs", pack.ref, "families", family.id), family
+    for type_record in pack.types:
+        yield pointer("packs", pack.ref, "types", type_record.id), type_record
+    for assembly in pack.assemblies:
+        yield pointer("packs", pack.ref, "assemblies", assembly.id), assembly
+    for mapping in pack.role_mappings:
+        yield pointer("packs", pack.ref, "role_mappings", mapping.id), mapping
 
 
 def _check_provenance(registry: KnowledgeRegistry, pack: LoadedPack) -> list[Issue]:

@@ -233,3 +233,44 @@ async def test_interrupted_jobs_are_failed_on_startup(client: Any) -> None:
         await session.commit()
     body = (await client.get(f"/api/v1/jobs/{job_id}", headers=h)).json()
     assert body["status"] == "failed" and body["error"]["code"] == "JOB_INTERRUPTED"
+
+
+async def test_legacy_1_0_0_version_is_upgraded_on_read_without_rewriting(client: Any) -> None:
+    """A stored BuildingModel 1.0.0 row is served as a valid 1.1.0 model; the row (JSON, schema
+    version, hash) is never rewritten — versions are immutable."""
+    from sqlalchemy import select
+
+    from app.core.db import get_sessionmaker
+    from app.modules.versions.models import ProjectVersion
+    from tests.building.test_migrations import DEMO_V1_0
+
+    h = await _auth(client)
+    pid = await _project(client, h)
+    created = (await client.post(f"/api/v1/projects/{pid}/versions/demo", headers=h)).json()
+    legacy = json.loads(DEMO_V1_0.read_text(encoding="utf-8"))
+    async with get_sessionmaker()() as session:
+        row = await session.get(ProjectVersion, uuid.UUID(created["id"]))
+        assert row is not None
+        row.model = legacy  # simulate a row written before schema 1.1.0
+        row.schema_version = "1.0.0"
+        stored_hash = row.model_hash
+        await session.commit()
+
+    resp = await client.get(f"/api/v1/projects/{pid}/versions/{created['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["model"]["schema_version"] == "1.1.0"
+    assert body["model"]["types"] == [] and body["model"]["assemblies"] == []
+    assert all(el["type_ref"] is None for el in body["model"]["elements"])
+    assert body["model_hash"] == stored_hash
+    assert body["schema_version"] == "1.0.0"  # what is stored, not what is served
+    assert body["issues"] == []
+
+    async with get_sessionmaker()() as session:
+        stored = (
+            await session.execute(
+                select(ProjectVersion).where(ProjectVersion.id == uuid.UUID(created["id"]))
+            )
+        ).scalar_one()
+        assert stored.model == legacy and stored.schema_version == "1.0.0"
+        assert stored.model_hash == stored_hash

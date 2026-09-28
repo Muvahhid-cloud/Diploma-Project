@@ -11,6 +11,7 @@ lock; any error raises `KnowledgeLoadError` with all issues. Packs are immutable
 changes go into a new `.v<n>` directory.
 """
 
+import json
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -20,6 +21,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from app.modules.building.issues import Issue, errors, pointer
+from app.modules.catalog.components import ComponentsDocument
 from app.modules.catalog.integrity import check_registry
 from app.modules.catalog.lock import PACKS_DIR, REGIONS_DIR, SOURCES_DIR, verify_lock
 from app.modules.catalog.provenance import Source
@@ -36,6 +38,7 @@ from app.modules.catalog.schemas import (
 KNOWLEDGE_DIR = Path("knowledge")
 RULES_PROFILES_DIR = Path("rules-profiles")
 MANIFEST = "pack.yaml"
+MATERIAL_LIBRARY = Path("materials") / "library.json"
 _RULES_FILE = re.compile(r"^(?P<id>[a-z][a-z0-9-]*)\.v(?P<version>[1-9][0-9]*)\.yaml$")
 
 
@@ -108,6 +111,14 @@ def _load_pack(knowledge_dir: Path, pack_dir: Path, issues: list[Issue]) -> Load
     for name in c.drawing_profiles:
         dp = _parse(DrawingProfilesDocument, pack_dir / name, f"{rel_dir}/{name}", issues)
         profiles += dp.profiles if dp else []
+    families, types, assemblies, mappings = [], [], [], []
+    for name in c.components:
+        comp = _parse(ComponentsDocument, pack_dir / name, f"{rel_dir}/{name}", issues)
+        if comp:
+            families += comp.families
+            types += comp.types
+            assemblies += comp.assemblies
+            mappings += comp.role_mappings
     present = {f.relative_to(pack_dir).as_posix() for f in pack_dir.rglob("*") if f.is_file()}
     return LoadedPack(
         manifest=manifest,
@@ -118,6 +129,10 @@ def _load_pack(knowledge_dir: Path, pack_dir: Path, issues: list[Issue]) -> Load
         terms=tuple(terms),
         localized=tuple(localized),
         drawing_profiles=tuple(profiles),
+        families=tuple(families),
+        types=tuple(types),
+        assemblies=tuple(assemblies),
+        role_mappings=tuple(mappings),
         extra_files=tuple(sorted(present - listed)),
     )
 
@@ -129,6 +144,15 @@ def known_rules_profiles(data_dir: Path) -> frozenset[str]:
         if match:
             refs.add(f"{match['id']}@{match['version']}")
     return frozenset(refs)
+
+
+def known_materials(data_dir: Path) -> frozenset[str] | None:
+    """Material ids of the shared library (data/materials/library.json), if present."""
+    path = data_dir / MATERIAL_LIBRARY
+    if not path.is_file():
+        return None
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    return frozenset(str(m["id"]) for m in doc.get("materials", []))
 
 
 def read_knowledge(data_dir: Path, *, verify: bool = True) -> KnowledgeRegistry:
@@ -184,7 +208,11 @@ def read_knowledge(data_dir: Path, *, verify: bool = True) -> KnowledgeRegistry:
         regions[region.ref] = region
     registry = KnowledgeRegistry(sources=sources, packs=packs, regions=regions)
     if not issues:
-        issues += check_registry(registry, known_rules_profiles=known_rules_profiles(data_dir))
+        issues += check_registry(
+            registry,
+            known_rules_profiles=known_rules_profiles(data_dir),
+            known_materials=known_materials(data_dir),
+        )
     if verify:
         issues += verify_lock(knowledge_dir)
     if errors(issues):

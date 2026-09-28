@@ -18,6 +18,42 @@ export function generatedModelJson(): BuildingModel {
   return structuredClone(generatedHouse) as BuildingModel;
 }
 
+/** The demo house with its exterior walls typed (schema 1.1.0 snapshots; test data only). */
+export function typedDemoModelJson(): BuildingModel {
+  const model = demoModelJson();
+  model.assemblies = [
+    {
+      id: "assembly.wall.test_exterior_300",
+      kind: "wall",
+      name: "Test exterior wall 300",
+      layers: [
+        { function: "structure", material_id: null, thickness: 0.28, side: null },
+        { function: "finish", material_id: "interior_wall", thickness: 0.02, side: "interior" },
+      ],
+      total_thickness: 0.3,
+      source: "test-types@1",
+      content_sha256: "ab".repeat(32),
+    },
+  ];
+  model.types = [
+    {
+      id: "type.wall.test_exterior_300",
+      family: "family.wall.basic",
+      name: "Test exterior wall",
+      params: { element_type: "wall", wall_kind: "exterior", load_bearing: true },
+      assembly_id: "assembly.wall.test_exterior_300",
+      source: "test-types@1",
+      content_sha256: "cd".repeat(32),
+    },
+  ];
+  for (const el of model.elements) {
+    if (el.type === "wall" && el.properties.wall_kind === "exterior") {
+      el.type_ref = "type.wall.test_exterior_300";
+    }
+  }
+  return model;
+}
+
 export function bySemanticKey(model: BuildingModel, key: string): BuildingElement {
   const el = model.elements.find((e) => e.semantic_key === key);
   if (!el) throw new Error(`no element ${key}`);
