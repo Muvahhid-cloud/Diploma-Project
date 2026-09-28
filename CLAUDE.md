@@ -6,7 +6,7 @@ Permanent rules and decisions for every Claude Code session on this repository. 
 
 An AI-powered residential building design platform: natural language → validated `BuildingSpecification` → deterministic layout → `BuildingModel` (typed elements) → procedural 3D in the browser → quantities → preliminary cost → NL modifications → versions/compare → reports.
 
-Docs (source of truth for design): `docs/architecture.md`, `docs/building-model.md`, `docs/ai-pipeline.md`, `docs/3d-engine.md`, `docs/database.md`, `docs/roadmap.md`.
+Docs (source of truth for design): `docs/architecture.md`, `docs/building-model.md`, `docs/ai-pipeline.md`, `docs/3d-engine.md`, `docs/database.md`, `docs/knowledge.md`, `docs/roadmap.md`.
 
 Current phase: see the ☐/◐/☑ markers in `docs/roadmap.md`. Do not implement features from a later phase unless asked.
 
@@ -52,10 +52,10 @@ Current phase: see the ☐/◐/☑ markers in `docs/roadmap.md`. Do not implemen
 
 ```
 apps/web/src/{app,features,engine,viewer,stores,lib,schema}
-apps/api/app/{core,shared,modules/{auth,projects,versions,building,rules,layout,mep,quantities,costing,ai,jobs,reports}}
+apps/api/app/{core,shared,modules/{auth,projects,versions,building,rules,catalog,layout,mep,quantities,costing,ai,jobs,reports}}
 apps/api/{alembic,tests,evals}
 packages/schema/          # generated
-data/{materials,cost-catalogs,rules-profiles,fixtures}
+data/{materials,cost-catalogs,rules-profiles,knowledge,fixtures}
 docs/  infra/  docker-compose.yml  Makefile
 ```
 
@@ -97,6 +97,7 @@ pnpm migrate                 # alembic upgrade head
 pnpm schema                  # regenerate packages/schema (model + spec + AI API JSON Schemas, TS types) from Pydantic
 pnpm fixtures                # regenerate data/fixtures/demo-house.model.json from its authoring script
 pnpm golden                  # regenerate layout golden files (data/fixtures/golden) + generated-house fixture
+pnpm knowledge:lock          # re-hash data/knowledge after a reviewed knowledge change (knowledge.lock.json)
 ```
 
 Local environment notes (dev machine is Windows): `uv` may only be available as `py -3.12 -m uv`; the scripts in `package.json` call `uv` through `scripts/uv.mjs`, which falls back automatically. `make` is optional. `pnpm db:local` may come up on a new port after a restart — copy the printed `DATABASE_URL` into `.env`. The `api` preview config runs uvicorn without `--reload`: restart it after backend changes.
@@ -116,6 +117,15 @@ Local environment notes (dev machine is Windows): `uv` may only be available as 
 - Changing the mock interpreter must keep every mock prompt in `tests/ai/test_mock_provider.py` laying out without errors.
 - Changing AI API DTOs (`ai/schemas/responses.py`) ⇒ `pnpm schema` (the web uses the generated validators) and refresh `apps/web/src/features/ai/__fixtures__` from a real response if the shape changed.
 - Live Anthropic test: `RUN_LIVE_AI_TESTS=true` only; never in CI.
+
+## Knowledge notes (Phase 3.5)
+
+- Design: `docs/knowledge.md`. Steps K1 Foundation → K2 Families/Types/Assemblies → K3 Design Systems → K4 Templates → K5 Knowledge API and Units → K6 Optional Structural Elements; don't rename, merge or start a step before the previous one is reviewed.
+- **Knowledge is not rules.** Knowledge packs never hold enforceable minimums/maximums; those stay in rules profiles. Only `approved` knowledge (via `registry.approved_items()`) may ever be consumed by engines or AI; in K1 nothing consumes the catalog (import-linter contract; lift it deliberately, per module).
+- Every knowledge object needs provenance (source + printed pages) and a status. Source-derived knowledge starts `extracted`/`needs_verification`, editorial knowledge `draft`. Never mark knowledge reviewed/approved without a human review.
+- Paraphrase only; never copy source text or reproduce figures/symbols; record inferences in `inferences`; never invent source-derived facts.
+- Georgievsky 2004 is one source, scoped as the `spds` drawing-convention profile, never global. The `core` pack may cite published sources only for existence.
+- Packs are immutable once used (new `.v<n>`); after any data change run the tests and `pnpm knowledge:lock`. New element/room types or relationship kinds need a `core` ontology entry.
 
 ## Working agreements for Claude
 

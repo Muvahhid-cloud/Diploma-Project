@@ -279,6 +279,10 @@ Types map cleanly to IFC: wall→IfcWall, room→IfcSpace, door→IfcDoor, windo
 
 ---
 
+## 9.1 Knowledge ontology (Phase 3.5)
+
+The `core@1` knowledge pack (`data/knowledge/packs/core.v1/ontology.yaml`, [knowledge.md](knowledge.md) §3.2) binds every element type, room type, building type, the level and every relationship kind of this schema to an ontology class with an (editorial) IFC mapping, and adds vocabulary-only classes the model does not represent (foundation, lintel, column, pipeline, …). The Pydantic schema stays canonical: adding an element type, room type or relationship kind requires the matching ontology entry (integrity check `ONTOLOGY_COVERAGE`) and `pnpm knowledge:lock`.
+
 ## 10. BuildingRulesProfile (configurable conceptual rules)
 
 Dimensional rules are **data, not code**. The layout engine and validators read every minimum/maximum from the active `BuildingRulesProfile`; no dimensional constant is hard-coded in business logic.

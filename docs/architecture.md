@@ -10,6 +10,7 @@ This document is the top-level map. Deep dives:
 | AI providers, prompting, validation loop, modification | [ai-pipeline.md](ai-pipeline.md) |
 | Layout engine, procedural geometry, viewer | [3d-engine.md](3d-engine.md) |
 | PostgreSQL schema, versioning storage | [database.md](database.md) |
+| Architectural knowledge packs (Phase 3.5) | [knowledge.md](knowledge.md) |
 | Phased delivery plan | [roadmap.md](roadmap.md) |
 
 ---
@@ -84,6 +85,7 @@ Monorepo, two applications, one shared generated-contract package.
 │   ├── cost-catalogs/          # seed unit-rate catalogs (YAML)
 │   ├── materials/              # material library (library.json: render + validation; costing fields in Phase 4)
 │   ├── rules-profiles/         # BuildingRulesProfile YAML (generic-residential@1, …)
+│   ├── knowledge/              # versioned, source-attributed knowledge packs + lock (Phase 3.5)
 │   └── fixtures/               # canonical specs/models used by tests on both sides
 ├── docs/
 ├── infra/
@@ -129,6 +131,7 @@ apps/api/
         ├── versions/            # versions, drafts, diff/compare
         ├── building/            # ★ DOMAIN: spec + model schemas, validation, operations
         ├── rules/               # ★ DOMAIN: BuildingRulesProfile schema + evaluator (configurable, regional)
+        ├── catalog/             # ★ DOMAIN: architectural knowledge packs (loader, registry, integrity, lock); read-only, not consumed in K1
         ├── layout/              # ★ DOMAIN: spec → architectural model
         ├── mep/                 # ★ DOMAIN: plumbing / electrical / HVAC generation
         ├── quantities/          # ★ DOMAIN: model → quantity takeoff
@@ -159,6 +162,7 @@ Dependency direction:
 router → service → { repository, domain modules, ai }
 ai → building, rules (schemas), generation.pipeline (use case); vendor SDKs only in ai/providers/<vendor>.py
 rules → building (schemas only)
+catalog → building (schemas only); nothing → catalog in K1 (import-linter)
 layout → building, rules  mep → building, rules
 quantities → building    costing → quantities, building
 ```
@@ -279,6 +283,7 @@ Generated Zod schemas validate every API payload at the boundary (`lib/api.ts`).
 | ADR-010 | In-process jobs first, worker later behind same interface | Celery from day 1 | Avoid infra before need |
 | ADR-011 | MEP is **schematic** (rule-based routing), labeled "not for construction" | Engineering-grade design | Out of scope and liability; still gives quantities + visualization |
 | ADR-012 | AI answers through **structured outputs** (JSON Schema of `SpecificationDraft`), validated by Pydantic + rules, **one** repair call at most | Forced tool use; free text + parsing; multi-call agents | Works on every current Claude model (newer models reject forced `tool_choice`); one call per generation; invalid output never accepted |
+| ADR-014 | Architectural knowledge as **versioned, hash-locked YAML packs** with per-object provenance and a review lifecycle; only `approved` knowledge may be consumed; knowledge never replaces rules profiles (docs/knowledge.md) | Knowledge in the DB; RAG/vector search over sources; knowledge inside rules profiles | Reviewable diffs, reproducible loads, explicit attribution; no infra before need; keeps enforceable rules separate |
 | ADR-013 | AI generation runs as a background task recording its **real stage** on `ai_generations` (polled) | Synchronous request; SSE streaming | Same in-process runner as ADR-010; progress without invented percentages; history for free |
 
 ---

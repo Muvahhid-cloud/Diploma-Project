@@ -14,6 +14,7 @@
     "schema": "node scripts/uv.mjs run --directory apps/api python -m app.modules.building.export_schema ../../packages/schema/generated && node scripts/uv.mjs run --directory apps/api python -m app.modules.ai.export_schema ../../packages/schema/generated && pnpm --filter @buildai/schema generate",
     "fixtures": "node scripts/uv.mjs run --directory apps/api python -m app.modules.building.fixtures.demo_house ../../data/fixtures/demo-house.model.json",
     "golden": "node scripts/uv.mjs run --directory apps/api python -m app.modules.layout.golden ../../data",
+    "knowledge:lock": "node scripts/uv.mjs run --directory apps/api python -m app.modules.catalog.lock ../../data",
     "migrate": "node scripts/uv.mjs run --directory apps/api alembic upgrade head",
     "lint": "pnpm lint:web && pnpm lint:api",
     "lint:web": "pnpm --filter @buildai/web lint",

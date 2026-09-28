@@ -89,6 +89,7 @@ source_modules = [
     "app.modules.mep",
     "app.modules.quantities",
     "app.modules.costing.domain",
+    "app.modules.catalog",
 ]
 forbidden_modules = [
     "fastapi",
@@ -97,6 +98,49 @@ forbidden_modules = [
     "app.modules.ai",
 ]
 allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Knowledge catalog depends only on the building schemas (docs/knowledge.md)"
+type = "forbidden"
+source_modules = ["app.modules.catalog"]
+forbidden_modules = [
+    "app.modules.rules",
+    "app.modules.layout",
+    "app.modules.mep",
+    "app.modules.quantities",
+    "app.modules.costing",
+    "app.modules.generation",
+    "app.modules.versions",
+    "app.modules.projects",
+    "app.modules.jobs",
+    "app.modules.demo",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+# Phase 3.5 K1: knowledge is loaded and checked, never consumed. Lift per module only when an
+# approved-knowledge consumer is deliberately introduced (K2+), via registry.approved_items().
+name = "K1: no module consumes the knowledge catalog yet"
+type = "forbidden"
+source_modules = [
+    "app.core",
+    "app.shared",
+    "app.modules.auth",
+    "app.modules.projects",
+    "app.modules.versions",
+    "app.modules.building",
+    "app.modules.rules",
+    "app.modules.layout",
+    "app.modules.mep",
+    "app.modules.quantities",
+    "app.modules.costing",
+    "app.modules.ai",
+    "app.modules.generation",
+    "app.modules.jobs",
+    "app.modules.demo",
+    "app.modules.health",
+]
+forbidden_modules = ["app.modules.catalog"]
 
 [[tool.importlinter.contracts]]
 name = "Core does not depend on feature modules"

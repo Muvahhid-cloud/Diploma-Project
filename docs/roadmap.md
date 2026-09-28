@@ -137,6 +137,28 @@ Deferred / changed from the original plan:
 - OpenAI-compatible adapter → later
 - "Exit: eval pass rate ≥ 90 %" → pending the eval suite and live credentials
 
+## Phase 3.5 — Architectural knowledge & real template system ◐
+Goal: ground the AI and the deterministic engines in structured, versioned, source-attributed architectural knowledge, without changing Phase 1–3 behaviour until a step deliberately does. Details: [knowledge.md](knowledge.md). Steps keep this order; each is reviewed before the next starts.
+
+| Step | Scope | Status |
+|---|---|---|
+| K1 — Knowledge Foundation | pure `modules/catalog`; provenance/source model; knowledge-item, ontology, glossary, drawing-profile and region-profile schemas; loader, registry, integrity, hash lock; `core@1` pack; Georgievsky 2004 source record and `spds-georgievsky-2004@1` pack (`spds@1` drawing profile); `generic@1` region profile | ☑ 2026-09-28 |
+| K2 — Families, Types, Assemblies | typed families/types (doors, windows, walls, floors, roofs, stairs) and layered assemblies from approved knowledge | ☐ |
+| K3 — Design Systems | coherent combinations of types, assemblies, roofs, finishes, openings | ☐ |
+| K4 — Templates | real building configurations (programme, relationships, circulation, structural concept, constraints, layout hints); needs sources beyond the drafting handbook | ☐ |
+| K5 — Knowledge API and Units | read-only catalog API; imperial display/input conversion over SI internals | ☐ |
+| K6 — Optional Structural Elements | structural element types (foundations, columns, beams, lintels) | ☐ |
+
+**K1 completion checklist** (verified 2026-09-28):
+
+| Criterion | Result |
+|---|---|
+| Pure catalog module, import boundaries | ☑ `app.modules.catalog` in the domain-purity contract; catalog depends only on `building`; contract "no module consumes the catalog yet" |
+| Provenance on every object; lifecycle | ☑ 83 book items `extracted`, 6 `needs_verification`, none reviewed/approved; `approved_items()` is empty |
+| Georgievsky 2004 scoped, not global | ☑ `drawing_convention_profile` pack (`spds`); `core` may cite it only for existence; the default region does not include it |
+| Integrity + hash lock | ☑ the loader refuses stale/missing locks and every integrity violation (tested per rule) |
+| Phase 1–3 unchanged | ☑ golden files, fixtures and `packages/schema` regenerate byte-identically; no engine, prompt or schema change |
+
 ## Phase 4 — Quantities & preliminary cost ☐
 - Material library (YAML → DB); item-code vocabulary
 - Takeoff: walls net of openings (area/volume/blocks), slabs (concrete m³, rebar kg estimate), roof, finishes by room, doors/windows counts & areas, stairs
@@ -190,6 +212,7 @@ IFC export · GLB fixture catalog · multiple cost regions & user-editable catal
 | 10 | Generated element ids (2026-09-28) | `uuid5(project id, semantic key)`: stable across regenerations in a project, never shared between projects |
 | 11 | Requested area vs. room program (2026-09-28) | The requested gross floor area is delivered; rooms deviate instead, and every deviation > 15 % (and unmet adjacency) is reported — never silent |
 | 12 | AI output mechanism (2026-09-28) | Structured outputs (JSON Schema of `SpecificationDraft`) instead of forced tool use; ≤ 1 repair call; model name from `AI_MODEL` only |
+| 14 | Phase 3.5 knowledge (2026-09-28) | Steps K1 Knowledge Foundation → K2 Families, Types, Assemblies → K3 Design Systems → K4 Templates → K5 Knowledge API and Units → K6 Optional Structural Elements. Georgievsky 2004 is one source, scoped as the SPDS/ESKD-era `spds` drawing-convention profile, never a global standard; extracted knowledge stays unreviewed until a person reviews it; only approved knowledge may be consumed; knowledge is not rules |
 | 13 | Default model suggestion (2026-09-28) | `.env.example` suggests `claude-opus-5`; any model is a configuration change, never a code change |
 
 ## Open decisions
