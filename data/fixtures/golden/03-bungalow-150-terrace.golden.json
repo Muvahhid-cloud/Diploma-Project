@@ -111,5 +111,6 @@
     }
   ],
   "warnings": [],
-  "model_sha256": "053712de287a9e63cf59cd0cbf953a875a1cbad878ac15be2efcdf489fa1ffac"
+  "model_sha256": "053712de287a9e63cf59cd0cbf953a875a1cbad878ac15be2efcdf489fa1ffac",
+  "geometry_sha256": "deb772a7089e7b35ee7b943cdb6304317611fd44322182fb5bf322ed56e2f710"
 }

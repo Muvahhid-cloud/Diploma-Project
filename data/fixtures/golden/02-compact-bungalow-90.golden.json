@@ -77,5 +77,6 @@
   "warnings": [
     "LAYOUT_AREA_DEVIATION"
   ],
-  "model_sha256": "891ac4eb82f5726c30349c58db288c720d4b624803d5ab8e1cd06c450945dbf0"
+  "model_sha256": "891ac4eb82f5726c30349c58db288c720d4b624803d5ab8e1cd06c450945dbf0",
+  "geometry_sha256": "e5aa84878b72199b6677cfed371a19b4b7873995d8a198bb15511872f38aa794"
 }

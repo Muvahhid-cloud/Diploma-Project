@@ -1,7 +1,8 @@
 """Golden files for the reference specifications (data/fixtures/specs).
 
 A golden file is a compact, reviewable summary of what the engine generates for a spec + seed:
-footprint, rooms with areas, element counts and the sha256 of the full model JSON. Tests fail on
+footprint, rooms with areas, element counts, the sha256 of the full model JSON and the geometry
+fingerprint (building/fingerprint.py: levels + elements without type metadata). Tests fail on
 any change; update deliberately (and say why in the commit) with:  pnpm golden
 
 It also writes data/fixtures/generated-house.model.json (reference spec 01, seed 0), the shared
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from app.modules.building.elements import Room
+from app.modules.building.fingerprint import geometry_sha256
 from app.modules.building.specification import BuildingSpecification
 from app.modules.building.summary import summarize
 from app.modules.layout.engine import LayoutResult, generate_layout
@@ -68,6 +70,7 @@ def golden_summary(result: LayoutResult) -> dict[str, Any]:
         ],
         "warnings": sorted(w.code for w in result.warnings),
         "model_sha256": hashlib.sha256(model.model_dump_json().encode("utf-8")).hexdigest(),
+        "geometry_sha256": geometry_sha256(model),
     }
 
 

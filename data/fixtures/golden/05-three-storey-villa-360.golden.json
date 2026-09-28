@@ -198,5 +198,6 @@
     "LAYOUT_AREA_DEVIATION",
     "LAYOUT_AREA_DEVIATION"
   ],
-  "model_sha256": "ea02d3ab7a36a3d7d9f0c5e48ba3043cf94345b4fd334577a99c88da71284111"
+  "model_sha256": "ea02d3ab7a36a3d7d9f0c5e48ba3043cf94345b4fd334577a99c88da71284111",
+  "geometry_sha256": "0b634f15e53efbda2c01bbfbce11cf92b0e95ef70d75452d229394f06c6629cb"
 }
