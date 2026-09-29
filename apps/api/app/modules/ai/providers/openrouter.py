@@ -32,27 +32,21 @@ from typing import Any
 import httpx
 
 from app.modules.ai.errors import AIProviderError, AITimeoutError, AIUnavailableError
-from app.modules.ai.prompts.shared import SCHEMA_IN_PROMPT_VERSION, schema_in_prompt_block
+from app.modules.ai.prompts.shared import SCHEMA_IN_PROMPT_VERSION
 from app.modules.ai.providers.base import AIProvider
-from app.modules.ai.providers.json_schema import structured_output_schema
+from app.modules.ai.providers.json_schema import (
+    JSON_SCHEMA,
+    PROMPT_SCHEMA,
+    is_schema_too_complex,
+    prompt_schema_system,
+    structured_output_schema,
+)
 from app.modules.ai.structured import StructuredRequest, StructuredResult
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 APP_TITLE = "BuildAI 3D"  # OpenRouter app attribution header (not a secret)
-
-JSON_SCHEMA = "json_schema"  # strict structured outputs (grammar-constrained)
-PROMPT_SCHEMA = "prompt_schema"  # fallback: schema in the system prompt, JSON-only answer
-# Upstream messages meaning "this schema is too complex for structured outputs" (a 400 that is
-# rejected before any generation, so it costs nothing). Matched case-insensitively.
-_SCHEMA_TOO_COMPLEX = (
-    "grammar is too large",
-    "schema is too complex",
-    "too many optional",
-    "simplify your tool schemas",
-    "schema too large",
-)
 
 _RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504, 529})
 _MAX_BACKOFF_S = 10.0
@@ -100,7 +94,7 @@ class OpenRouterProvider(AIProvider):
         system = request.system
         if mode == PROMPT_SCHEMA:
             # Static per prompt version too, so the cache breakpoint below still applies.
-            system = f"{system}\n\n{schema_in_prompt_block(request.output_schema)}"
+            system = prompt_schema_system(system, request.output_schema)
         payload: dict[str, Any] = {
             "model": self.model,
             "max_tokens": request.max_tokens,
@@ -196,8 +190,9 @@ class OpenRouterProvider(AIProvider):
     def _schema_too_complex(self, response: httpx.Response, body: Any) -> bool:
         if response.status_code != 400:
             return False
-        text = (self._error_message(body, response) + " " + response.text[:4000]).lower()
-        return any(marker in text for marker in _SCHEMA_TOO_COMPLEX)
+        return is_schema_too_complex(
+            self._error_message(body, response) + " " + response.text[:4000]
+        )
 
     def _status_error(self, status: int, message: str) -> AIProviderError:
         if status == 401:

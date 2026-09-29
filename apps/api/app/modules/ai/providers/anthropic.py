@@ -6,22 +6,43 @@ Claude model (unlike forced `tool_choice`). Unsupported numeric/length constrain
 into field descriptions (`json_schema.structured_output_schema`) and enforced by Pydantic
 afterwards — the interpreter never trusts the output either way.
 
+If the API rejects the schema because its compiled grammar is too large (a 400 before any
+generation), the provider switches — for this and every later call — to the shared
+`prompt_schema` fallback (`json_schema.prompt_schema_system`): the schema goes into the system
+prompt and no `output_config.format` is sent. The answer is parsed with `json.loads` only in
+both modes; the mode is reported in `StructuredResult.metadata["output_mode"]`.
+
 The system prompt carries a cache breakpoint: it is static per prompt version, so repeated
 generations and the repair call reuse the cached prefix.
 """
 
 import json
+import logging
 import time
 from typing import Any
 
 import anthropic
 
 from app.modules.ai.errors import AITimeoutError, AIUnavailableError
+from app.modules.ai.prompts.shared import SCHEMA_IN_PROMPT_VERSION
 from app.modules.ai.providers.base import AIProvider
-from app.modules.ai.providers.json_schema import structured_output_schema
+from app.modules.ai.providers.json_schema import (
+    JSON_SCHEMA,
+    PROMPT_SCHEMA,
+    is_schema_too_complex,
+    prompt_schema_system,
+    structured_output_schema,
+)
 from app.modules.ai.structured import StructuredRequest, StructuredResult
 
 __all__ = ["AnthropicProvider", "structured_output_schema"]
+
+logger = logging.getLogger(__name__)
+
+
+def _error_text(exc: anthropic.APIStatusError) -> str:
+    """Message + body of an API error, for matching (the SDK never includes the key)."""
+    return f"{exc.message} {exc.body if exc.body is not None else ''}"
 
 
 class AnthropicProvider(AIProvider):
@@ -44,31 +65,39 @@ class AnthropicProvider(AIProvider):
         self._client: Any = client or anthropic.AsyncAnthropic(
             api_key=api_key, base_url=base_url, timeout=timeout_s, max_retries=max_retries
         )
+        # Set once the API refused to compile the output schema; later calls go straight to
+        # the schema-in-prompt mode (no repeated failing request).
+        self._schema_rejected = False
 
-    async def complete_structured(self, request: StructuredRequest) -> StructuredResult:
-        output_config: dict[str, Any] = {
-            "format": {
+    @property
+    def output_mode(self) -> str:
+        return PROMPT_SCHEMA if self._schema_rejected else JSON_SCHEMA
+
+    def _params(self, request: StructuredRequest, mode: str) -> dict[str, Any]:
+        system = request.system
+        output_config: dict[str, Any] = {}
+        if mode == JSON_SCHEMA:
+            output_config["format"] = {
                 "type": "json_schema",
                 "schema": structured_output_schema(request.output_schema),
             }
-        }
+        else:
+            system = prompt_schema_system(system, request.output_schema)
         if self._effort:
             output_config["effort"] = self._effort
-        started = time.perf_counter()
+        params: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": request.max_tokens,
+            "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+        }
+        if output_config:
+            params["output_config"] = output_config
+        return params
+
+    async def _create(self, params: dict[str, Any]) -> Any:
         try:
-            response = await self._client.messages.create(
-                model=self.model,
-                max_tokens=request.max_tokens,
-                system=[
-                    {
-                        "type": "text",
-                        "text": request.system,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-                messages=[{"role": m.role, "content": m.content} for m in request.messages],
-                output_config=output_config,
-            )
+            return await self._client.messages.create(**params)
         except anthropic.APITimeoutError as exc:
             raise AITimeoutError(f"anthropic: timeout ({exc})") from exc
         except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as exc:
@@ -83,6 +112,32 @@ class AnthropicProvider(AIProvider):
             raise AIUnavailableError(f"anthropic: HTTP {exc.status_code} ({exc.message})") from exc
         except anthropic.APIConnectionError as exc:
             raise AIUnavailableError(f"anthropic: connection failed ({exc})") from exc
+
+    async def complete_structured(self, request: StructuredRequest) -> StructuredResult:
+        started = time.perf_counter()
+        mode = self.output_mode
+        try:
+            response = await self._create(self._params(request, mode))
+        except AIUnavailableError as err:
+            cause = err.__cause__
+            if not (
+                mode == JSON_SCHEMA
+                and isinstance(cause, anthropic.BadRequestError)
+                and is_schema_too_complex(_error_text(cause))
+            ):
+                raise
+            # The API cannot compile the schema into a grammar (rejected before generation).
+            # Fall back once, and for every later call, to the schema in the system prompt;
+            # the interpreter validates the answer exactly like a structured output.
+            logger.warning(
+                "anthropic: structured outputs rejected the %s schema (%s); using %s mode",
+                request.output_name,
+                cause.message,
+                SCHEMA_IN_PROMPT_VERSION,
+            )
+            self._schema_rejected = True
+            mode = PROMPT_SCHEMA
+            response = await self._create(self._params(request, mode))
         latency_ms = round((time.perf_counter() - started) * 1000)
 
         text = "".join(
@@ -111,5 +166,6 @@ class AnthropicProvider(AIProvider):
             metadata={
                 "cache_read_input_tokens": int(getattr(usage, "cache_read_input_tokens", 0) or 0),
                 "request_id": getattr(response, "_request_id", None),
+                "output_mode": mode,
             },
         )
