@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildScene } from "../scene/build-scene";
 import { demoIndex } from "../test-fixtures";
 import { MATERIAL_PRESETS } from "./library";
-import { MaterialCache } from "./material-cache";
+import { coloredMaterialKey, MaterialCache, parseMaterialKey } from "./material-cache";
 import { furnitureSource, registerFurnitureAsset } from "../builders/furniture/assets";
 
 describe("material library", () => {
@@ -50,6 +50,22 @@ describe("MaterialCache", () => {
     const cache = new MaterialCache();
     cache.get("unobtainium");
     expect(cache.missingIds).toEqual(["unobtainium"]);
+  });
+
+  it("draws a display color over a library preset without changing the material (K3)", () => {
+    const cache = new MaterialCache();
+    const key = coloredMaterialKey("exterior_wall", "#e8c547");
+    expect(key).toBe("exterior_wall@#e8c547");
+    expect(parseMaterialKey(key)).toEqual({ id: "exterior_wall", color: "#e8c547" });
+    const yellow = cache.get(key);
+    const plain = cache.get("exterior_wall");
+    expect(`#${yellow.color.getHexString()}`).toBe("#e8c547");
+    expect(yellow.roughness).toBe(plain.roughness);
+    expect(yellow.metalness).toBe(plain.metalness);
+    expect(yellow).not.toBe(plain);
+    expect(cache.missingIds).toEqual([]); // the id is still the library id
+    expect(coloredMaterialKey("exterior_wall", null)).toBe("exterior_wall");
+    expect(coloredMaterialKey("exterior_wall", "yellow")).toBe("exterior_wall"); // hex only
   });
 });
 

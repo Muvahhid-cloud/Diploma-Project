@@ -11,10 +11,13 @@ from app.modules.ai.prompts.shared import (
 )
 from app.modules.ai.schemas.generation import GenerationOptions
 from app.modules.ai.structured import AITask, RepairInput
+from app.modules.building.appearance import PALETTE
 from app.modules.building.enums import RoofType
+from app.modules.building.facades import FACADE_SYNONYMS
 from app.modules.building.specification import (
     ArchitecturalStyle,
     FacadeMaterial,
+    FacadeSide,
     InteriorStyle,
     SpecRoomType,
     WindowStyle,
@@ -29,6 +32,56 @@ def test_system_prompt_lists_the_whole_vocabulary() -> None:
             assert member.value in text, member
     for roof in RoofType:
         assert roof.value in text
+
+
+def test_system_prompt_describes_the_supported_design_intent() -> None:
+    """K3: the vocabulary is generated from the facade enum, synonym table and color palette —
+    only capabilities the engine actually implements."""
+    text = system_prompt()
+    assert PROMPT_VERSION == "building-generation@2"
+    for side in FacadeSide:
+        assert side.value in text
+    for word in FACADE_SYNONYMS:
+        assert f'"{word}"' in text
+    for name in PALETTE:
+        assert name in text
+    for field in (
+        "design.facade_color",
+        "design.windows",
+        "rooms[].faces",
+        "style.design_system",
+        "excluded_facades",
+    ):
+        assert field in text
+    assert '"yellow walls" -> design.facade_color = "yellow"' in text
+
+
+def test_only_usable_design_systems_reach_the_prompt() -> None:
+    """Draft systems are never offered to the model; approved ones (temporary copy) are."""
+    from app.modules.ai.context import generation_context
+    from app.modules.catalog.design_systems import design_catalog
+    from tests.ai.helpers import profile
+    from tests.catalog.helpers import approved_design_registry, real_registry
+
+    def systems_in(catalog_registry: object) -> list[str]:
+        ctx = generation_context(
+            region_code="KZ-ALA",
+            currency="KZT",
+            profile=profile(),
+            design_systems=design_catalog(catalog_registry),  # type: ignore[arg-type]
+        )
+        request = build_generation_request("house", options=None, context=ctx, max_tokens=900)
+        block = request.messages[0].content.split("<project_context>\n")[1]
+        data = json.loads(block.split("\n</project_context>")[0])
+        return [d["id"] for d in data["design_systems"]]
+
+    assert systems_in(real_registry()) == []
+    assert systems_in(approved_design_registry()) == [
+        "classic-brick",
+        "contemporary-warm",
+        "modern-minimal",
+        "scandinavian-timber",
+    ]
 
 
 def test_system_prompt_forbids_geometry_code_and_costs() -> None:

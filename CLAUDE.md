@@ -138,6 +138,13 @@ Local environment notes (dev machine is Windows): `uv` may only be available as 
 - Local constraints in the search must not change the seeding of other candidates: skip inside the loop, never drop skeletons from the list (`sk_index` seeds the RNG).
 - Tolerances: `EPS` for stored coordinates, `DERIVED_TOLERANCE` for derived heights, `OVERLAP_AREA_TOLERANCE` for polygon contact (`building/geometry.py`); don't invent new ones ad hoc.
 
+## Design systems & design intent notes (Phase 3.5 K3)
+
+- Design: `docs/building-model.md` §2.3/§3.6, `docs/knowledge.md` §3.5, `docs/3d-engine.md` §16.8. Precedence is fixed: explicit spec value → selected design system's allow-lists (conflict = error, never silently changed) → design-system defaults (only for nulls) → generic defaults. It is resolved in `building/design.py`, never by an LLM.
+- Design systems are editorial, region-neutral catalog records (`buildai-design-systems@1`, draft). Only approved systems whose role mapping fully resolves are usable (`catalog/design_systems.py`); engines, checks, the AI context and the web get `DesignSystemSnapshot`s via `generation.pipeline.available_design_systems`. Never approve them without a human review; tests approve in temporary copies.
+- Facades are derived, never stored: street = model −y = front; rear = garden. One synonym table (`building/facades.py`) for prompt and mock. Colors are display appearance only (`finish_*_color`, palette in `building/appearance.py`); never add thermal/structural/cost meaning or fake materials for a color.
+- Window intent changes placement (`layout/build.py _windows`, `size_class`); `design_checks` (in `validate_model`) rejects emphasised windows on excluded facades. The no-intent path must keep every reference geometry fingerprint.
+
 ## Working agreements for Claude
 
 - Read the relevant `/docs` file before changing a subsystem; update docs when behavior or decisions change.

@@ -61,7 +61,9 @@ Selection: `get_ai_provider()` (`providers/__init__.py`) from settings; `use_ai_
 
 The API refuses to start with `AI_PROVIDER=anthropic` or `openrouter` and no key/model.
 
-## 3. Prompts (`ai/prompts/`, version `building-generation@1`)
+## 3. Prompts (`ai/prompts/`, version `building-generation@2`)
+
+`@2` (Phase 3.5 K3) adds design intent to the vocabulary — facades (from `FacadeSide` and the synonym table `building/facades.py FACADE_SYNONYMS`), the facade color palette (`building/appearance.py`), `design.windows`, `rooms[].faces`, `style.design_system` — and rules for it: explicit visual/directional wishes are requirements ("yellow walls" → `design.facade_color = "yellow"`; "panoramic windows facing the backyard, not on the front" → `design.windows = {emphasis: panoramic, preferred_facades: [rear], excluded_facades: [front]}` with `style.window_style` standard; "living room facing the garden" → `faces: rear`), only what the vocabulary cannot express is unsupported, and a design system is chosen only from `<project_context>.design_systems` — the **usable (approved) systems only**, with their allow-lists and defaults (empty today: every system is a draft). Explicit wishes outside a system's allow-lists are never changed: the model leaves the system out and explains the conflict. Tier 2 of the interpreter adds `building.design.check_design` (against the pipeline's design catalog) to `rules.spec_checks` (which now includes the intent checks), so `DESIGN_SYSTEM_*`, `DESIGN_OPTION_CONFLICT`, `APPEARANCE_INVALID`, `WINDOW_FACADE_CONFLICT` and `FACADE_PREFERENCE_INVALID` go to the single repair call like any other issue. The mock interpreter reads the same intents with the same synonym table and palette.
 
 - `shared.py` — output name/description, the **vocabulary generated from the specification enums** (room types, features, styles, roofs, windows, facades, finish levels), the output JSON Schema (`SpecificationDraft`), `quote_user_text` and the project-context block.
 - `generation.py` — static system prompt (cacheable; nothing request-specific) + user turn: `<project_context>` (region, currency, rules profile ref, **room minimums read from the active rules profile**, max room share of the floor area), optional `<form_fields>`, and the user's text in `<building_request>` tags.
@@ -79,7 +81,7 @@ Changing prompt wording or structure = bump `PROMPT_VERSION` (stored on every ge
 {
   "outcome": "specification" | "clarification",
   "understanding": "A 2-storey modern family house of about 280 m² with 4 bedrooms, …",
-  "specification": { /* BuildingSpecification 1.0.0 — required for "specification" */ },
+  "specification": { /* BuildingSpecification 1.1.0 (incl. style.design_system, design, rooms[].faces) — required for "specification" */ },
   "clarification_questions": ["How many floors …?"],   // required for "clarification", ≤ 5
   "conflicts": ["…"],               // explicit requirements that conflict / exceed scope
   "unsupported_requests": ["Swimming pool — …"]      // reported, not built

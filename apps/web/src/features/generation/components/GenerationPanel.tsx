@@ -9,7 +9,13 @@ import { versionKeys } from "@/features/versions/api";
 import { ApiError } from "@/lib/api/errors";
 import type { Issue, Job } from "@/lib/api/schemas";
 
-import { GENERATION_STAGES, useJob, useStartGeneration, useValidateSpec } from "../api";
+import {
+  GENERATION_STAGES,
+  useDesignOptions,
+  useJob,
+  useStartGeneration,
+  useValidateSpec,
+} from "../api";
 import { emptySpec } from "../spec-presets";
 import { checkSpecShape, SpecForm } from "./SpecForm";
 
@@ -38,6 +44,7 @@ export function GenerationPanel({
   const validate = useValidateSpec(projectId);
   const start = useStartGeneration(projectId);
   const job = useJob(jobId);
+  const designOptions = useDesignOptions();
   const handled = useRef<string | null>(null);
 
   const running = start.isPending || (jobId !== null && !isFinished(job.data));
@@ -120,6 +127,7 @@ export function GenerationPanel({
           onSeedChange={setSeed}
           issues={issues}
           disabled={running}
+          designOptions={designOptions.data}
         />
       </div>
 

@@ -10,7 +10,9 @@ import type { z } from "zod";
 
 import type { Issue } from "@/lib/api/schemas";
 
+import type { DesignOptions } from "../api";
 import { nextRoomKey, ROOM_TYPE_LABELS, SPEC_PRESETS } from "../spec-presets";
+import { DesignSection } from "./DesignSection";
 
 const STYLES = [
   "modern",
@@ -48,6 +50,8 @@ export interface SpecFormProps {
   onSeedChange: (seed: number) => void;
   issues: Issue[];
   disabled?: boolean;
+  /** Design systems and palette from GET /design-options (K3); undefined while loading. */
+  designOptions?: DesignOptions;
 }
 
 /**
@@ -55,7 +59,15 @@ export interface SpecFormProps {
  * generated contract); fields the form doesn't show (adjacency, open plan, assumptions) are
  * kept from presets unchanged.
  */
-export function SpecForm({ spec, onChange, seed, onSeedChange, issues, disabled }: SpecFormProps) {
+export function SpecForm({
+  spec,
+  onChange,
+  seed,
+  onSeedChange,
+  issues,
+  disabled,
+  designOptions,
+}: SpecFormProps) {
   const [presetId, setPresetId] = useState("");
   const set = (patch: Partial<BuildingSpecification>) => onChange({ ...spec, ...patch });
   const targets = spec.targets;
@@ -258,6 +270,8 @@ export function SpecForm({ spec, onChange, seed, onSeedChange, issues, disabled 
         </div>
       </section>
 
+      <DesignSection spec={spec} onChange={onChange} options={designOptions} issues={issues} />
+
       <section className="flex flex-col gap-2" aria-labelledby="spec-rooms">
         <div className="flex items-center justify-between">
           <h3
@@ -336,13 +350,30 @@ export function SpecForm({ spec, onChange, seed, onSeedChange, issues, disabled 
                   ×
                 </button>
               </div>
-              {(room.name || room.type === "bedroom") && (
+              {
                 <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
                   {room.name && (
                     <span className="font-medium text-neutral-700 dark:text-neutral-300">
                       {room.name}
                     </span>
                   )}
+                  <label className="flex items-center gap-1">
+                    Faces
+                    <select
+                      aria-label={`Room ${i + 1} faces`}
+                      className="rounded border border-neutral-300 bg-white px-1 py-0 text-xs dark:border-neutral-700 dark:bg-neutral-900"
+                      value={room.faces ?? ""}
+                      onChange={(e) =>
+                        setRoom(i, {
+                          faces: (e.target.value || null) as RoomRequirement["faces"],
+                        })
+                      }
+                    >
+                      <option value="">any side</option>
+                      <option value="rear">garden (rear)</option>
+                      <option value="front">street (front)</option>
+                    </select>
+                  </label>
                   {room.type === "bedroom" &&
                     (["en_suite", "walk_in_closet"] as const).map((f) => (
                       <label key={f} className="flex items-center gap-1">
@@ -365,7 +396,7 @@ export function SpecForm({ spec, onChange, seed, onSeedChange, issues, disabled 
                     <span>open to {room.open_to?.join(", ")}</span>
                   )}
                 </div>
-              )}
+              }
               {issueAt(`/rooms/${i}`).map((x) => (
                 <p key={x.code + x.path} className="mt-1 text-xs text-red-600">
                   {x.message}

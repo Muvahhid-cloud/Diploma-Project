@@ -1,6 +1,7 @@
 """Spec -> layout -> checks -> new version: the step shared by the spec-form job (Phase 2) and
 AI generation (Phase 3). It never interprets language and contains no layout logic itself.
 
+    selected design system (K3): approved snapshot + its role mapping's type set, or
     approved component types (catalog resolver, K2; none approved = untyped)
       -> type set vs rules profile (invalid types are refused, never resized)
       -> layout engine (tier-3 feasibility + model invariants, in a worker thread)
@@ -16,9 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.modules.auth.models import User
+from app.modules.building.design import DesignCatalog, check_design
 from app.modules.building.issues import Issue, errors
 from app.modules.building.specification import BuildingSpecification
 from app.modules.building.validation import validate_model
+from app.modules.catalog.design_systems import design_catalog, resolve_design
 from app.modules.catalog.loader import load_knowledge
 from app.modules.catalog.resolver import resolve_type_set
 from app.modules.layout.engine import LayoutError, LayoutResult, generate_layout
@@ -44,6 +47,19 @@ async def _noop(_: str) -> None:
     return None
 
 
+def available_design_systems() -> DesignCatalog:
+    """Usable (approved, complete) design systems and why the others are not usable (K3).
+
+    The only way the rest of the application (spec checks, AI prompt context, the web) learns
+    about design systems: plain building-level snapshots, never catalog records."""
+    return design_catalog(load_knowledge(get_settings().data_dir))
+
+
+def check_spec_design(spec: BuildingSpecification) -> list[Issue]:
+    """Tier-2 design-system checks of `spec` against the current catalog."""
+    return check_design(spec, available_design_systems())
+
+
 async def layout_and_save(
     session: AsyncSession,
     project: Project,
@@ -66,7 +82,29 @@ async def layout_and_save(
     project_id: uuid.UUID = project.id
     profile = rules_profile(data_dir, project.rules_profile_id)
     materials = material_ids(data_dir)
-    type_set = resolve_type_set(load_knowledge(data_dir)).type_set
+    registry = load_knowledge(data_dir)
+    design_system = None
+    if spec.style.design_system is not None:
+        # Tier-2 checks (check_design) already refused unknown/unapproved systems; this is the
+        # last line of defence and never substitutes another system.
+        resolution = resolve_design(registry, spec.style.design_system)
+        if resolution.snapshot is None or resolution.types is None:
+            raise LayoutError(
+                "LAYOUT_INFEASIBLE",
+                "The selected design system cannot be used",
+                [
+                    Issue(
+                        severity="error",
+                        code="DESIGN_SYSTEM_NOT_APPROVED",
+                        path="/style/design_system",
+                        message=f"{spec.style.design_system}: {resolution.reason}",
+                    )
+                ],
+            )
+        design_system = resolution.snapshot
+        type_set = resolution.types.type_set
+    else:
+        type_set = resolve_type_set(registry).type_set
     if type_set is not None:
         type_issues = check_type_set(type_set, profile)
         if type_issues:
@@ -84,6 +122,7 @@ async def layout_and_save(
         seed=seed,
         material_ids=materials,
         type_set=type_set,
+        design_system=design_system,
     )
     await on_stage("checking")
     model_errors = errors(validate_model(result.model, material_ids=materials))

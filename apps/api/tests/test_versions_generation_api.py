@@ -236,8 +236,8 @@ async def test_interrupted_jobs_are_failed_on_startup(client: Any) -> None:
 
 
 async def test_legacy_1_0_0_version_is_upgraded_on_read_without_rewriting(client: Any) -> None:
-    """A stored BuildingModel 1.0.0 row is served as a valid 1.1.0 model; the row (JSON, schema
-    version, hash) is never rewritten — versions are immutable."""
+    """A stored BuildingModel 1.0.0 row is served as a valid current (1.2.0) model; the row
+    (JSON, schema version, hash) is never rewritten — versions are immutable."""
     from sqlalchemy import select
 
     from app.core.db import get_sessionmaker
@@ -259,7 +259,8 @@ async def test_legacy_1_0_0_version_is_upgraded_on_read_without_rewriting(client
     resp = await client.get(f"/api/v1/projects/{pid}/versions/{created['id']}", headers=h)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["model"]["schema_version"] == "1.1.0"
+    assert body["model"]["schema_version"] == "1.2.0"
+    assert body["model"]["design"] is None
     assert body["model"]["types"] == [] and body["model"]["assemblies"] == []
     assert all(el["type_ref"] is None for el in body["model"]["elements"])
     assert body["model_hash"] == stored_hash

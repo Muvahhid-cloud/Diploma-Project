@@ -567,8 +567,11 @@
       "additionalProperties": false,
       "properties": {
         "schema_version": {
-          "const": "1.0.0",
-          "default": "1.0.0",
+          "default": "1.1.0",
+          "enum": [
+            "1.0.0",
+            "1.1.0"
+          ],
           "type": "string"
         },
         "building_type": {
@@ -614,6 +617,9 @@
         "features": {
           "$ref": "#/$defs/Features"
         },
+        "design": {
+          "$ref": "#/$defs/DesignIntent"
+        },
         "budget": {
           "anyOf": [
             {
@@ -648,6 +654,37 @@
       "title": "BuildingSpecification",
       "type": "object"
     },
+    "DesignIntent": {
+      "additionalProperties": false,
+      "description": "Explicit visual/directional design requests (1.1.0). Null = not requested.",
+      "properties": {
+        "facade_color": {
+          "anyOf": [
+            {
+              "pattern": "^(#[0-9a-f]{6}|[a-z][a-z_]{1,30})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "windows": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WindowIntent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "DesignIntent",
+      "type": "object"
+    },
     "FacadeMaterial": {
       "description": "High-level facade choice; the layout engine maps it to material-library ids.",
       "enum": [
@@ -657,6 +694,17 @@
         "timber"
       ],
       "title": "FacadeMaterial",
+      "type": "string"
+    },
+    "FacadeSide": {
+      "description": "Semantic facade of the house (building/facades.py). The street is on the model's south\nside (-y): front = street/entrance side, rear = garden/backyard side, left/right as seen\nfrom the street.",
+      "enum": [
+        "front",
+        "rear",
+        "left",
+        "right"
+      ],
+      "title": "FacadeSide",
       "type": "string"
     },
     "Features": {
@@ -1003,6 +1051,30 @@
         },
         "elements": {
           "type": "integer"
+        },
+        "facade_colors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "windows_by_facade": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "rooms_on_facade": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": "object"
         }
       },
       "required": [
@@ -1019,7 +1091,10 @@
         "walls",
         "doors",
         "windows",
-        "elements"
+        "elements",
+        "facade_colors",
+        "windows_by_facade",
+        "rooms_on_facade"
       ],
       "title": "ModelSummary",
       "type": "object"
@@ -1190,6 +1265,17 @@
           },
           "maxItems": 2,
           "type": "array"
+        },
+        "faces": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FacadeSide"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -1311,6 +1397,20 @@
         },
         "interior_finish_level": {
           "$ref": "#/$defs/FinishLevel"
+        },
+        "design_system": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 2,
+              "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "Style",
@@ -1415,6 +1515,35 @@
         }
       },
       "title": "Terrace",
+      "type": "object"
+    },
+    "WindowIntent": {
+      "additionalProperties": false,
+      "description": "Where the emphasised (large/panoramic) windows go. Facades not listed keep\n`style.window_style`; excluded facades never get emphasised windows (standard ones).",
+      "properties": {
+        "emphasis": {
+          "$ref": "#/$defs/WindowStyle"
+        },
+        "preferred_facades": {
+          "items": {
+            "$ref": "#/$defs/FacadeSide"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "type": "array"
+        },
+        "excluded_facades": {
+          "items": {
+            "$ref": "#/$defs/FacadeSide"
+          },
+          "maxItems": 3,
+          "type": "array"
+        }
+      },
+      "required": [
+        "preferred_facades"
+      ],
+      "title": "WindowIntent",
       "type": "object"
     },
     "WindowStyle": {

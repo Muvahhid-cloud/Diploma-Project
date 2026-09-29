@@ -35,7 +35,7 @@ Three.js conversion (Y-up) happens in exactly one place: the viewer root group (
 
 ## 2. BuildingSpecification (intent)
 
-Implemented in `apps/api/app/modules/building/specification.py` (schema_version **1.0.0**). JSON Schema (validation shape: defaulted fields optional), TS types and a Zod validator are generated into `packages/schema` (`pnpm schema`). The spec contains **no geometry**: no coordinates, walls, element ids or levels' positions — unknown fields are rejected (`extra="forbid"`), vocabularies are closed enums. Reference specs: `data/fixtures/specs/*.spec.json`.
+Implemented in `apps/api/app/modules/building/specification.py` (schema_version **1.1.0**; every 1.0.0 document is a valid 1.1.0 document with the same meaning — the 1.1.0 fields of §2.3 are optional and null means "not requested"). JSON Schema (validation shape: defaulted fields optional), TS types and a Zod validator are generated into `packages/schema` (`pnpm schema`). The spec contains **no geometry**: no coordinates, walls, element ids or levels' positions — unknown fields are rejected (`extra="forbid"`), vocabularies are closed enums. Reference specs: `data/fixtures/specs/*.spec.json`.
 
 ```jsonc
 {
@@ -59,11 +59,17 @@ Implemented in `apps/api/app/modules/building/specification.py` (schema_version 
     "roof": { "type": "flat", "pitch_deg": null },   // flat|gable|hip; pitch 5..45 (null = engine default 25°)
     "window_style": "large",           // standard|large|panoramic
     "facade_material": "render",       // render|brick|concrete|timber (mapped to material-library ids)
-    "interior_finish_level": "standard"   // economy|standard|premium
+    "interior_finish_level": "standard",  // economy|standard|premium
+    "design_system": null              // 1.1.0: e.g. "modern-minimal" (catalog; §2.3)
+  },
+  "design": {                          // 1.1.0 explicit design intent (§2.3); nulls = not requested
+    "facade_color": "yellow",          // palette name or "#rrggbb": display color of the facade
+    "windows": { "emphasis": "panoramic", "preferred_facades": ["rear"], "excluded_facades": ["front"] }
   },
   "rooms": [                           // 1..40 requirements; keys unique
     { "key": "living", "type": "living", "name": "Living room", "target_area_m2": 45, "level": 0,
-      "open_to": ["kitchen"] },        // open plan: no wall where they meet (or open onto the corridor between them)
+      "open_to": ["kitchen"],          // open plan: no wall where they meet (or open onto the corridor between them)
+      "faces": "rear" },               // 1.1.0: front|rear facade the room should face (§2.3)
     { "key": "kitchen", "type": "kitchen", "target_area_m2": 20, "adjacent_to": ["dining"] },
     { "key": "master_bedroom", "type": "bedroom", "target_area_m2": 22, "level": 1,
       "features": ["en_suite"] },      // en_suite | walk_in_closet: rooms reached through this bedroom
@@ -93,6 +99,25 @@ The schema is unchanged by Phase 3 (still 1.0.0): the AI must produce exactly th
 
 `building/requirements.py` (pure) derives the key requirements of a spec (`SpecFacts`: storeys, floor area, bedrooms, bathrooms incl. en-suites, WCs, garage cars, balconies, terrace) and compares them with a generated model's `ModelSummary` (`RequirementCheck`: requested → delivered, met). It powers the "requested vs generated" summary and detects when an AI repair changed the user's program.
 
+### 2.3 Design intent and design systems (1.1.0, Phase 3.5 K3)
+
+Code: `building/design.py` (precedence, effective values, tier-2 checks), `building/facades.py`, `building/appearance.py`, `building/design_checks.py` (model checks).
+
+**Facades** are semantic and derived from geometry, never stored: the street is on the model's south side (−y), so `front` = street/entrance side (outward normal −y), `rear` = garden/backyard (+y), `left`/`right` as seen from the street (−x/+x). An exterior wall's facade is the direction of its outward normal (exterior walls run counter-clockwise, outward normal `(sin θ, −cos θ)`). Words map through one fixed table (`FACADE_SYNONYMS`): backyard, back yard, garden, yard, back, rear → rear; street, entrance, road, front → front.
+
+**Colors** are display appearance only: a palette name (`appearance.PALETTE`: white, off_white, warm_beige, sand, yellow, ochre, terracotta, brick_red, light_grey, grey, anthracite, black, sage_green, light_blue, timber_brown) or `#rrggbb`. A color never changes the facade material (a yellow render wall is still `exterior_wall`) and carries no thermal, structural, fire or cost meaning.
+
+| Field | Meaning | Engine effect |
+|---|---|---|
+| `design.facade_color` | display color of the exterior wall faces | every exterior wall's exterior face (`finish_right_color`), incl. the garage |
+| `design.windows` | `emphasis` (large/panoramic) on `preferred_facades`, never on `excluded_facades` | per-facade window size class (§3.3 `size_class`); preferred facades are glazed first |
+| `rooms[].faces` | front or rear | the room is placed in the street- or garden-side band (left/right: `FACADE_PREFERENCE_INVALID`) |
+| `style.design_system` | an approved design system (docs/knowledge.md §3.5) | its types, finishes, furniture palette and default facade color |
+
+**Precedence** (deterministic, `building/design.py`): (1) explicit values in the spec; (2) the selected design system's allow-lists — a value outside them is a `DESIGN_OPTION_CONFLICT` error with compatible alternatives, never silently changed; (3) the system's defaults for what the spec leaves null (facade color, finishes, furniture palette, component types); (4) generic defaults (the pre-K3 behaviour). Window sizes per facade (`resolve_window_preferences`): preferred → emphasis; excluded → standard; others → `style.window_style` (capped to standard when that equals the emphasis, so the emphasis stays concentrated).
+
+Tier-2 codes: `APPEARANCE_INVALID` (unknown color), `WINDOW_FACADE_CONFLICT` (a facade both preferred and excluded), `FACADE_PREFERENCE_INVALID` (duplicate facades, a room facing left/right), `DESIGN_SYSTEM_UNKNOWN`, `DESIGN_SYSTEM_NOT_APPROVED` (draft or incomplete system), `DESIGN_OPTION_CONFLICT`. Requested-vs-delivered checks (`requirements.design_checks`) read the generated model: facade color, emphasised windows per preferred facade, none on excluded facades, room orientation.
+
 ### 2.1 Room types (v1)
 
 A spec may request: `bedroom, bathroom, wc, kitchen, living, dining, open_kitchen_living, study, laundry, utility, storage, plant_room` (+ `en_suite`, `walk_in_closet` via bedroom `features`). The engine adds circulation (`entrance` hall, `corridor`, `staircase`/landing), `garage`, `balcony` and `terrace` rooms from `features`. `hall` exists in the model vocabulary but is not generated yet.
@@ -111,11 +136,11 @@ Every issue has the same shape (`building/issues.py`): `{ severity, code, path (
 
 ## 3. BuildingModel (resolved)
 
-Implemented in `apps/api/app/modules/building/{primitives,enums,elements,types,model}.py` (schema_version **1.1.0**; 1.0.0 documents are upgraded on read, §8). JSON Schema, TS types and the Zod validator in `packages/schema` are generated from these classes (`pnpm schema`).
+Implemented in `apps/api/app/modules/building/{primitives,enums,elements,types,design,model}.py` (schema_version **1.2.0**; 1.0.0 and 1.1.0 documents are upgraded on read, §8). JSON Schema, TS types and the Zod validator in `packages/schema` are generated from these classes (`pnpm schema`).
 
 ```jsonc
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "id": "uuid",                       // the "building" object id
   "building": { "name": "Demo family house", "building_type": "single_family_house", "description": "…" },
   "units": "m",
@@ -125,7 +150,8 @@ Implemented in `apps/api/app/modules/building/{primitives,enums,elements,types,m
   "elements": [ Element, ... ],       // discriminated union on "type"
   "metadata": { "source": "fixture" | "layout" | "operations", "generator": "layout@1.2.0 · rules generic-residential@1" },
   "types": [ TypeSnapshot, ... ],     // 1.1.0: every type an element refers to (sorted by id; §3.5)
-  "assemblies": [ AssemblySnapshot, ... ]  // 1.1.0: every assembly a type or room refers to
+  "assemblies": [ AssemblySnapshot, ... ],  // 1.1.0: every assembly a type or room refers to
+  "design": DesignRecord | null       // 1.2.0: design system snapshot + effective intent (§3.6)
 }
 ```
 
@@ -167,9 +193,9 @@ Absolute elevation = `level.elevation + position.z`. Polygon properties (room bo
 
 | type | usual layer | position = | dimensions | properties |
 |---|---|---|---|---|
-| `wall` | structure (load-bearing exterior) / architecture | axis start; `rotation.z` = axis direction | `length, thickness, height` | `wall_kind` (exterior/interior/partition), `alignment` (center/left/right), `load_bearing`, `finish_left_id`, `finish_right_id` (left = +normal side; exterior walls are authored CCW so left = interior) |
+| `wall` | structure (load-bearing exterior) / architecture | axis start; `rotation.z` = axis direction | `length, thickness, height` | `wall_kind` (exterior/interior/partition), `alignment` (center/left/right), `load_bearing`, `finish_left_id`, `finish_right_id` (left = +normal side; exterior walls are authored CCW so left = interior), `finish_left_color`, `finish_right_color` (1.2.0: display color `#rrggbb` of that face or null; appearance only) |
 | `door` | architecture | host-wall-local: x = offset of the start edge, z = 0 | `width, height, thickness` | `door_kind` (entrance/interior/sliding/garage), `swing` (left/right/double/sliding), `frame_material_id` |
-| `window` | architecture | host-wall-local: x = offset, z = sill height | `width, height` | `window_kind` (fixed/casement/sliding/panoramic), `frame_material_id`, `mullions` |
+| `window` | architecture | host-wall-local: x = offset, z = sill height | `width, height` | `window_kind` (fixed/casement/sliding/panoramic), `frame_material_id`, `mullions`, `size_class` (1.2.0: standard/large/panoramic for main windows of habitable rooms; null for service/stair windows and older models) |
 | `room` | architecture | boundary origin | `area, perimeter, height` (validated against the boundary) | `room_type`, `zone`, `boundary` (CCW, rectilinear, wall centerlines), `floor_material_id` |
 | `slab` | structure | outline origin; **top face** at `position.z` | `thickness, area` (outline − holes) | `slab_kind` (ground/floor/balcony), `outline`, `holes` |
 | `stair` | structure | bottom corner at the first riser; flight along local +x, width along local +y | `width, run_length, rise_total` | `stair_type` (straight), `risers`, `riser_height`, `tread_depth`, `from_level_id`, `to_level_id` |
@@ -221,6 +247,10 @@ Code: `building/types.py`. A model is **self-contained**: every type or assembly
 - Wall face finishes stay on the wall instance (`finish_left_id` / `finish_right_id`): they depend on the rooms on each side, not on the wall type.
 - Untyped elements (`type_ref: null`) are valid; 1.0.0 documents upgrade to untyped 1.1.0.
 - `TYPE_ROLES` names the roles the layout engine fills (`wall.exterior`, `door.wet_room`, `window.stair`, …); a catalog role mapping assigns one type per role (docs/knowledge.md §3.4).
+
+### 3.6 Design record (1.2.0, Phase 3.5 K3)
+
+`BuildingModel.design` (`building/design.py DesignRecord`, null = generic design without intent) makes a model self-contained for design: `design_system` is a `DesignSystemSnapshot` (id, name, catalog `source` pack, record `content_sha256`, allow-lists, defaults, finishes, furniture palette and the `type_ids` its role mapping resolved to — copied, like type snapshots, so stored versions never depend on the future catalog); `facade_color` is the effective color `{hex, name, source: user|design_system}`; `windows` is the effective window intent `{emphasis, preferred_facades, excluded_facades, source}`. Model checks (`building/design_checks.py`, part of `validate_model` so the layout search skips a violating candidate): `WINDOW_FACADE_CONFLICT` (error, emphasised window on an excluded facade), `WINDOW_PREFERENCE_UNSATISFIABLE` (warning, a preferred facade got no emphasised window), `DESIGN_OFF_SYSTEM` (error, a type outside the system's `type_ids` or a generic finish/furniture material the system replaces), `APPEARANCE_INVALID` (error, an exterior face color that differs from the record). The layout engine adds `ROOM_FACADE_UNMET` (warning) when a room could not reach the facade it should face. `ModelSummary` (derived) reports `facade_colors`, `windows_by_facade` (size class counts) and `rooms_on_facade`.
 
 ---
 
@@ -352,7 +382,7 @@ Each operation also records its **inverse** for undo within a draft. Batches tha
 { "id": "brick", "name": "Brick", "category": "masonry", "color": "#9a5038", "roughness": 0.88, "metalness": 0 }
 ```
 
-Required presets: concrete, brick, glass, wood, roof, floor, interior_wall, exterior_wall (plus tile, parquet, decking, window_frame, wood_dark, metal, fabric, fabric_light, ceramic, countertop, cabinet, screen). Costing fields (`item_code`, `unit`, `waste_factor`) are added in Phase 4; prices never live here (they live in cost catalogs).
+Required presets: concrete, brick, glass, wood, roof, floor, interior_wall, exterior_wall (plus tile, parquet, decking, window_frame, wood_dark, metal, fabric, fabric_light, ceramic, countertop, cabinet, screen; K3 design systems add the render presets window_frame_white, oak_light, stone_tile, wall_warm, fabric_warm — colors and roughness only, like every entry). A display color (`finish_*_color`) is drawn over a preset by the renderer (`id@#rrggbb` material key); it is not a material. Costing fields (`item_code`, `unit`, `waste_factor`) are added in Phase 4; prices never live here (they live in cost catalogs).
 
 ---
 
@@ -367,12 +397,13 @@ Element ids are `uuid5(id_namespace, semantic_key)`. The generation service uses
 ## 8. Schema evolution
 
 - `schema_version` follows semver. Additive optional fields → minor. Anything else → major with a migration function in `building/migrations/` (`v1_to_v2(doc: dict) -> dict`).
-- Stored documents are upgraded on read; tests keep one fixture per historical version (`data/fixtures/historical/*.v1.0.0.model.json`).
-- **Every read of a stored or file-based model goes through `building.migrations.load_model`** (version rows, AI tools, demo fixture): it applies the pure, idempotent upgrade steps (`v1_0_0_to_v1_1_0.upgrade`: explicit empty `types`/`assemblies`, `type_ref: null`, `ceiling_assembly_ref: null`) and validates. Stored rows are never rewritten: their JSON, `schema_version` column and `model_hash` stay as written (versions are immutable); the API serves the current schema. The web therefore only ever sees 1.1.0 (its validator uses the serialization schema, where defaulted fields are required).
+- Stored documents are upgraded on read; tests keep one fixture per historical version (`data/fixtures/historical/*.v1.0.0.model.json`, `generated-house.v1.1.0.model.json` = main before K3).
+- **Every read of a stored or file-based model goes through `building.migrations.load_model`** (version rows, AI tools, demo fixture): it applies the pure, idempotent upgrade steps (`v1_0_0_to_v1_1_0.upgrade`: explicit empty `types`/`assemblies`, `type_ref: null`, `ceiling_assembly_ref: null`; `v1_1_0_to_v1_2_0.upgrade`: `design: null`, wall `finish_*_color: null`, window `size_class: null` — nothing is inferred) and validates. Stored rows are never rewritten: their JSON, `schema_version` column and `model_hash` stay as written (versions are immutable); the API serves the current schema. The web therefore only ever sees 1.2.0 (its validator uses the serialization schema, where defaulted fields are required).
+- Specifications: 1.1.0 (K3) is additive; `schema_version` accepts "1.0.0" and "1.1.0" and a 1.0.0 document keeps its meaning (every new field is optional and null).
 
 ### 8.1 Geometry fingerprint
 
-`building.fingerprint.geometry_sha256(model)` hashes levels and elements without type metadata (`type_ref`, `ceiling_assembly_ref`, `types`, `assemblies`) and without document fields (id, versions, metadata). Golden files record it next to the full-model hash: schema upgrades and type assignment must leave it unchanged (K2 verified it for all reference specs, typed and untyped, and for the upgraded 1.0.0 fixtures).
+`building.fingerprint.geometry_sha256(model)` hashes levels and elements without type metadata (`type_ref`, `ceiling_assembly_ref`, `types`, `assemblies`) and without document fields (id, versions, metadata). Golden files record it next to the full-model hash: schema upgrades and type assignment must leave it unchanged (K2 verified it for all reference specs, typed and untyped, and for the upgraded 1.0.0 fixtures). K3 (1.2.0) also strips window `size_class` (classification metadata) and the `finish_*_color` keys **when null**: all ten reference specs (no design intent) and the upgraded 1.0.0/1.1.0 fixtures keep their exact pre-K3 fingerprints, while a colored model fingerprints differently (it renders differently).
 - After changing Pydantic models: `pnpm schema` regenerates `packages/schema` (JSON Schema → TS types via json-schema-to-typescript; the Zod validator is built at runtime from the same JSON Schema with `z.fromJSONSchema`). After changing the demo fixture script: `pnpm fixtures`. Pytest fails if the committed JSON Schema or fixture is stale; CI fails if the generated TS is stale.
 
 ## 9. IFC alignment (future)

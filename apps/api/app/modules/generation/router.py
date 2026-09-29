@@ -3,8 +3,12 @@ import uuid
 from fastapi import APIRouter, status
 
 from app.modules.auth.dependencies import CurrentUser, SessionDep
+from app.modules.building.appearance import PALETTE
+from app.modules.generation.pipeline import available_design_systems
 from app.modules.generation.schemas import (
+    DesignOptionsOut,
     GenerateRequest,
+    PaletteColor,
     SpecValidationOut,
     SpecValidationRequest,
 )
@@ -12,6 +16,19 @@ from app.modules.generation.service import GenerationService
 from app.modules.jobs.schemas import JobOut
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["generation"])
+design_router = APIRouter(prefix="/design-options", tags=["generation"])
+
+
+@design_router.get("")
+async def design_options(user: CurrentUser) -> DesignOptionsOut:
+    """Design systems (usable ones, and why the others are not usable yet) and the facade color
+    palette — what the specification form may offer (K3)."""
+    catalog = available_design_systems()
+    return DesignOptionsOut(
+        available=catalog.available,
+        unavailable=catalog.unavailable,
+        palette=[PaletteColor(name=name, hex=value) for name, value in PALETTE.items()],
+    )
 
 
 @router.post("/spec/validate")

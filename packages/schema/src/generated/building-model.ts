@@ -65,6 +65,11 @@ export type DoorSwing = "left" | "right" | "double" | "sliding";
 export type WindowKind = "fixed" | "casement" | "sliding" | "panoramic";
 /**
  * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "WindowStyle".
+ */
+export type WindowStyle = "standard" | "large" | "panoramic";
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
  * via the `definition` "RoomType".
  */
 export type RoomType =
@@ -153,9 +158,45 @@ export type LayerFunction =
  * via the `definition` "LayerSide".
  */
 export type LayerSide = "exterior" | "interior" | "top" | "bottom";
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "ArchitecturalStyle".
+ */
+export type ArchitecturalStyle =
+  | "modern"
+  | "minimalist"
+  | "contemporary"
+  | "classic"
+  | "traditional"
+  | "scandinavian"
+  | "industrial"
+  | "mediterranean"
+  | "luxury";
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "InteriorStyle".
+ */
+export type InteriorStyle =
+  "minimalist" | "modern" | "classic" | "scandinavian" | "industrial" | "luxury" | "cozy";
+/**
+ * High-level facade choice; the layout engine maps it to material-library ids.
+ *
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "FacadeMaterial".
+ */
+export type FacadeMaterial = "render" | "brick" | "concrete" | "timber";
+/**
+ * Semantic facade of the house (building/facades.py). The street is on the model's south
+ * side (-y): front = street/entrance side, rear = garden/backyard side, left/right as seen
+ * from the street.
+ *
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "FacadeSide".
+ */
+export type FacadeSide = "front" | "rear" | "left" | "right";
 
 export interface BuildingModel {
-  schema_version: "1.1.0";
+  schema_version: "1.2.0";
   id: string;
   building: BuildingInfo;
   units: "m";
@@ -169,6 +210,7 @@ export interface BuildingModel {
   metadata: ModelMetadata;
   types: TypeSnapshot[];
   assemblies: AssemblySnapshot[];
+  design: DesignRecord | null;
 }
 /**
  * This interface was referenced by `BuildingModel`'s JSON-Schema
@@ -263,6 +305,8 @@ export interface WallProperties {
   load_bearing: boolean;
   finish_left_id: string | null;
   finish_right_id: string | null;
+  finish_left_color: string | null;
+  finish_right_color: string | null;
 }
 /**
  * Door hosted by a wall (relationship hosted_by).
@@ -347,6 +391,7 @@ export interface WindowProperties {
   window_kind: WindowKind;
   frame_material_id: string | null;
   mullions: number;
+  size_class: WindowStyle | null;
 }
 /**
  * A space (not a solid). position = origin of `boundary`.
@@ -744,4 +789,124 @@ export interface Layer1 {
   material_id: string | null;
   thickness: number;
   side: LayerSide | null;
+}
+/**
+ * The design decisions a model was generated with (self-contained; K3).
+ *
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "DesignRecord".
+ */
+export interface DesignRecord {
+  design_system: DesignSystemSnapshot | null;
+  facade_color: EffectiveColor | null;
+  windows: WindowIntentRecord | null;
+}
+/**
+ * An approved design system as copied into a model (self-contained, like type snapshots).
+ *
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "DesignSystemSnapshot".
+ */
+export interface DesignSystemSnapshot {
+  id: string;
+  name: string;
+  source: string;
+  content_sha256: string;
+  /**
+   * @minItems 1
+   */
+  style_tags: ArchitecturalStyle[];
+  /**
+   * @minItems 1
+   */
+  interior_styles: InteriorStyle[];
+  role_mapping: string;
+  type_ids: string[];
+  roof: DesignRoof;
+  windows: DesignWindows;
+  facade: DesignFacade;
+  finishes: DesignFinishes;
+  furniture: FurniturePalette;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "DesignRoof".
+ */
+export interface DesignRoof {
+  /**
+   * @minItems 1
+   */
+  types: RoofType[];
+  default: RoofType;
+  default_pitch_deg: number | null;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "DesignWindows".
+ */
+export interface DesignWindows {
+  /**
+   * @minItems 1
+   */
+  styles: WindowStyle[];
+  default: WindowStyle;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "DesignFacade".
+ */
+export interface DesignFacade {
+  /**
+   * @minItems 1
+   */
+  materials: FacadeMaterial[];
+  default_material: FacadeMaterial;
+  colors: string[];
+  default_color: string | null;
+  custom_colors: boolean;
+}
+/**
+ * Interior finish materials (material-library ids; render appearance + future costing).
+ *
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "DesignFinishes".
+ */
+export interface DesignFinishes {
+  dry_floor: string;
+  wet_floor: string;
+  interior_wall: string;
+  wet_wall: string;
+}
+/**
+ * Furniture materials by slot (placeholders use these material ids).
+ *
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "FurniturePalette".
+ */
+export interface FurniturePalette {
+  upholstery: string;
+  upholstery_light: string;
+  wood: string;
+  wood_dark: string;
+  cabinet: string;
+  countertop: string;
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "EffectiveColor".
+ */
+export interface EffectiveColor {
+  hex: string;
+  name: string | null;
+  source: "user" | "design_system";
+}
+/**
+ * This interface was referenced by `BuildingModel`'s JSON-Schema
+ * via the `definition` "WindowIntentRecord".
+ */
+export interface WindowIntentRecord {
+  emphasis: WindowStyle;
+  preferred_facades: FacadeSide[];
+  excluded_facades: FacadeSide[];
+  source: "user" | "design_system";
 }

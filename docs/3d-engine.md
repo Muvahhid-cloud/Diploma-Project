@@ -75,7 +75,7 @@ alignment: center -> v in [-t/2, t/2], left -> [0, t], right -> [-t, 0]
    - *L-corner* (ends meet) → **pinwheel**: the arriving wall ("end") extends by half the other's thickness, the leaving wall ("start") trims by the same amount — corners close with no overlapping volume and no coplanar faces. Both-start/both-end corners: smaller id extends.
    - Collinear continuation → unchanged.
 2. **Panel decomposition** (`wallPanels`, no CSG): the face `[u0, u1] × [0, height]` minus hosted openings = full-height panels between openings + a sill panel below and a lintel panel above each opening. Openings are clamped to the wall; overlaps merge.
-3. Each panel is a box; faces get materials `±u / ±z → material_id (core)`, `+v → finish_left_id`, `−v → finish_right_id`. The opening reveals therefore show the core (brick, render).
+3. Each panel is a box; faces get materials `±u / ±z → material_id (core)`, `+v → finish_left_id`, `−v → finish_right_id`. The opening reveals therefore show the core (brick, render). A face with a display color (`finish_left_color` / `finish_right_color`, BuildingModel 1.2.0, K3) uses the material key `<finish id>@#rrggbb`: `MaterialCache` creates the library preset of that id with only its color replaced (same roughness/metalness, same material id — appearance, not a new material).
 4. All panels of a wall become **one mesh** with one geometry group per material.
 
 Exterior walls are authored counter-clockwise, so their left face is the interior and the right face the facade.
@@ -334,12 +334,40 @@ built candidate ─────────► validate_model        every model
 - **Storey height vs door sizes.** Door heights and thicknesses are fixed (by the component type, or by the engine defaults the generic types mirror), so they are never shrunk. layout@1.1.0 failed with `LAYOUT_INVALID` ("engine bug") for storeys below 2.6 m when a 2.4 m sliding door was needed; now a required door that cannot fit is a user-fixable `LAYOUT_INFEASIBLE` (`TYPE_GEOMETRY_MISMATCH`, path `/targets/floor_to_floor_height_m`, suggestion "raise the floor-to-floor height to at least … m"), and the optional garden door is left out with a note. Fixed-size service and stair windows are skipped where they would pass the wall top.
 - **Effect on output.** Only facade-core skeletons changed, so geometry changed only where layout@1.1.0 produced the stair defect: 7 of 10 reference specs keep their `geometry_sha256`; 05, 06 and 09 keep their layout on a 0.1 m (05: 0.2 m, two lanes) wider footprint. ENGINE_VERSION is `layout@1.2.0`.
 
+### 16.8 Design systems and design intent (layout@1.3.0, Phase 3.5 K3)
+
+`generate_layout(..., type_set, design_system: DesignSystemSnapshot | None = None)`. The generation pipeline resolves the spec's design system (approved only; docs/knowledge.md §3.5) into a snapshot plus the type set of its role mapping; the engine never reads the catalog. `building.design.effective_design(spec, system)` gives the `DesignRecord` the model carries (precedence: [building-model.md](building-model.md) §2.3).
+
+```
+rooms[].faces ─────────────► zoning wishes          front → street-side (south) band, rear → garden-side
+                              (planner, penalty 3.0)  (north) band, before balcony/terrace host wishes;
+                                                      unmet → ROOM_FACADE_UNMET warning
+design.windows ─────────────► _windows (build.py)    per facade size class (resolve_window_preferences):
+                                                      preferred facades are glazed first with the
+                                                      emphasis preset (sill/height/mullions/glazing ratio
+                                                      of that style or its type), excluded facades get
+                                                      standard windows; placed by WallPlan.place (the
+                                                      K2.5 interval arithmetic), recorded as size_class
+design.facade_color ────────► _walls                 finish_right_color of every exterior wall
+                                                      (house + garage); materials unchanged
+design system ──────────────► types, finishes,       role-mapping types (attach_types incl. fixed
+                              furniture palette      railing kind), dry/wet floor, interior/wet wall
+                                                      finishes, furniture material substitution
+built candidate ────────────► validate_model         + design_checks: an emphasised window on an
+                                                      excluded facade (or an off-system component) is an
+                                                      error → the next candidate is tried
+```
+
+- **Facade model.** Plan sides S/N/W/E of the rectangular footprint are the front/rear/left/right facades (`building/facades.py PLAN_SIDE`); the model derives the facade of any exterior wall from its outward normal, so nothing directional is stored.
+- **When a preferred facade has too little wall.** Every segment of the facade is tried (widths shrink to the free interval, never below the rules' minimum window width). A preferred facade that ends with no emphasised window is reported (`WINDOW_PREFERENCE_UNSATISFIABLE` warning, requested-vs-delivered check "not met") — the emphasis is never moved to an excluded facade.
+- **No-intent path unchanged.** Without intent every facade uses `style.window_style` and the old segment order; all ten reference specs keep their pre-K3 geometry fingerprints. ENGINE_VERSION is `layout@1.3.0` (BuildingModel 1.2.0).
+
 ### 16.5 Limitations (layout@1.0.0)
 
 - One plan type (double-loaded corridor, street on the south); no L/U-shaped houses except the garage annex, no courtyards, no sloped sites, no basements.
 - Straight flights only; the 3-storey core is a conceptual switchback (the pocket under the second flight belongs to the staircase room). Storey height is limited to one flight (≤ 16 risers → ≤ 3.04 m with the generic profile).
 - Rooms only span a full band or are tucked against the corridor; small houses (< ~60 m² per storey) lose a large share to hall, core and corridor.
-- Windows are sized by glazing ratio per facade segment, not by view/orientation; no skylights; no guards for low upper-floor sills (sills are raised to the guard height instead).
+- Windows are sized by glazing ratio per facade segment (K3 adds per-facade size classes, not views/orientation to the sun); no skylights; no guards for low upper-floor sills (sills are raised to the guard height instead). Rooms can face the front or rear only (bands), not left/right.
 - Furniture is basic and skipped when it does not fit (e.g. shallow balconies).
 - Gable roofs inherit the Phase 1 renderer limitation (no gable-end infill).
 

@@ -6,6 +6,7 @@ areas and the requested floor area. Errors block generation; warnings are shown 
 Feasibility of an actual plan (tier 3) is decided by the layout engine.
 """
 
+from app.modules.building.design import check_intent
 from app.modules.building.issues import Issue, Severity, pointer
 from app.modules.building.specification import (
     BuildingSpecification,
@@ -277,4 +278,6 @@ def check_spec(
     checks.features()
     gfa = spec.targets.gross_floor_area_m2
     checks.site(gfa / spec.targets.storeys if gfa is not None else None)
-    return checks.issues
+    # Design intent that is invalid on its own (K3). The selected design system is checked
+    # against the catalog by the caller (building.design.check_design; rules has no catalog).
+    return checks.issues + check_intent(spec)

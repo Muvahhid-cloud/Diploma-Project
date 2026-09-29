@@ -1,7 +1,9 @@
 """Deterministic, rule-based interpreter behind MockAIProvider (development, tests, CI, offline).
 
 It reads the usual ways people describe a house (area, storeys, bedroom/bathroom counts, garage,
-balcony, terrace, style, windows, roof, facade, budget, city) with regular expressions and
+balcony, terrace, style, windows, roof, facade, budget, city — and since K3 facade colors,
+large/panoramic windows on named facades, and living spaces facing the garden, through the
+same facade synonym table and color palette as the prompt) with regular expressions and
 builds the same `SpecificationDraft` a language model would return. Every value it does not
 read from the request is recorded as an assumption; requests it cannot express are reported,
 never silently dropped. It is not a language model and never pretends to be one in production
@@ -15,6 +17,9 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.modules.ai.schemas.generation import GenerationOptions
+from app.modules.building.appearance import COLOR_SYNONYMS, PALETTE, color_name
+from app.modules.building.facades import FACADE_SYNONYMS
+from app.modules.building.specification import FacadeSide
 
 NUMBER_WORDS = {
     "one": 1,
@@ -198,6 +203,75 @@ def _style(d: _Draft) -> tuple[str | None, str | None]:
     if architectural or interior:
         d.signals += 1
     return architectural, interior
+
+
+_FACADE_WORDS = sorted(FACADE_SYNONYMS, key=lambda w: (-len(w), w))  # longest first
+_FACADE_RE = re.compile(rf"\b({'|'.join(re.escape(w) for w in _FACADE_WORDS)})\b")
+_COLOR_WORDS = sorted(
+    {n.replace("_", " ") for n in PALETTE} | set(COLOR_SYNONYMS), key=lambda w: (-len(w), w)
+)
+_COLOR_RE = "|".join(re.escape(w) for w in _COLOR_WORDS)
+_NEGATION = re.compile(r"\b(?:not|no|never|avoid|without|except)\b")
+
+
+def _sentences(d: _Draft) -> list[str]:
+    return [s.strip() for s in re.split(r"[.;\n]", d.text) if s.strip()]
+
+
+def _facade_color(d: _Draft) -> str | None:
+    """ "Make the exterior walls yellow", "a yellow facade" -> palette name."""
+    m = d.find(
+        rf"(?:exterior|external|outside|outer|facade)[^.]*?\b(?:walls?|facade|render)?[^.]*?"
+        rf"\b({_COLOR_RE})\b"
+    ) or d.find(rf"\b({_COLOR_RE})\s+(?:exterior |external |outside )?(?:walls|facade|house)")
+    if not m:
+        return None
+    return color_name(m.group(1))
+
+
+def _window_intent(d: _Draft) -> dict[str, Any] | None:
+    """Large/panoramic windows on named facades (preferred) and excluded facades."""
+    emphasis: str | None = None
+    preferred: list[str] = []
+    excluded: list[str] = []
+    for sentence in _sentences(d):
+        if "window" not in sentence:
+            continue
+        size = (
+            "panoramic"
+            if re.search(r"panoramic|floor[ -]to[ -]ceiling", sentence)
+            else "large"
+            if re.search(r"\b(?:large|big)\b", sentence)
+            else None
+        )
+        if size is None:
+            continue
+        for m in _FACADE_RE.finditer(sentence):
+            side = FACADE_SYNONYMS[m.group(1)].value
+            negated = bool(_NEGATION.search(sentence[: m.start()]))
+            target = excluded if negated else preferred
+            if side not in preferred + excluded:
+                target.append(side)
+                emphasis = emphasis or size
+    if not preferred or emphasis is None:
+        return None
+    return {"emphasis": emphasis, "preferred_facades": preferred, "excluded_facades": excluded}
+
+
+def _rooms_facing_rear(d: _Draft) -> list[str]:
+    """Room keys that should face the garden/backyard ("the living room should face the
+    backyard")."""
+    keys: list[str] = []
+    for sentence in _sentences(d):
+        if not re.search(r"\b(?:face|faces|facing|overlook\w*|toward\w*|onto)\b", sentence):
+            continue
+        sides = {FACADE_SYNONYMS[m.group(1)] for m in _FACADE_RE.finditer(sentence)}
+        if FacadeSide.REAR not in sides or "window" in sentence:
+            continue
+        for key, pattern in (("living", r"\bliving|lounge"), ("dining", r"\bdining")):
+            if re.search(pattern, sentence) and key not in keys:
+                keys.append(key)
+    return keys
 
 
 def interpret_offline(prompt: str, options: GenerationOptions | None = None) -> dict[str, Any]:
@@ -447,10 +521,24 @@ def _specification(
         )
         style["roof"] = {"type": roof}
         d.assume("/style/roof/type", roof, f"Roof not specified; typical for {architectural}.")
-    if d.find(r"panoramic|floor[ -]to[ -]ceiling|glass walls?"):
+    windows = _window_intent(d)
+    if windows is not None:
+        # Emphasis goes to the named facades only; the rest of the house keeps standard windows.
+        style["window_style"] = "standard"
+    elif d.find(r"panoramic|floor[ -]to[ -]ceiling|glass walls?"):
         style["window_style"] = "panoramic"
     elif d.find(r"(?:large|big) windows"):
         style["window_style"] = "large"
+    design: dict[str, Any] = {}
+    color = _facade_color(d)
+    if color is not None:
+        design["facade_color"] = color
+    if windows is not None:
+        design["windows"] = windows
+    for key in _rooms_facing_rear(d):
+        for room in rooms:
+            if room["key"] == key:
+                room["faces"] = "rear"
     if d.find(r"\bbrick"):
         style["facade_material"] = "brick"
     elif d.find(r"concrete"):
@@ -485,6 +573,8 @@ def _specification(
         "features": features,
         "assumptions": d.assumptions[:50],
     }
+    if design:
+        spec["design"] = design
     if budget:
         spec["budget"] = budget
     region = next((code for city, code in REGIONS.items() if city in d.text), None)

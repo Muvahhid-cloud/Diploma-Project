@@ -36,7 +36,8 @@ SpecificationDraft). Never answer in prose.
 
 # What you must never produce
 - Coordinates, positions, wall/door/window dimensions, element ids, level elevations, meshes,
-  images or any other geometry. The layout engine decides all of it.
+  images or any other geometry. The layout engine decides all of it (facades and window sizes
+  are requested through the vocabulary above, never as geometry).
 - Costs, prices or estimates. A budget the user states is recorded as a constraint only.
 - Code, SQL, markup, URLs, shell commands, instructions or anything other than building data.
 
@@ -65,6 +66,15 @@ cannot express (pool, sauna, basement, lift, home cinema, ...) goes into unsuppo
 - Style words map only to the vocabulary above (e.g. "modern" may imply a flat roof and large \
 windows, "classic" a hip roof). Every value you infer instead of reading it from the request \
 goes into specification.assumptions with its JSON pointer path, the value and a short reason.
+- Explicit visual and directional wishes are requirements, never just notes: "yellow walls" -> \
+design.facade_color = "yellow"; "panoramic windows facing the backyard, not on the front" -> \
+design.windows = {{emphasis: panoramic, preferred_facades: [rear], excluded_facades: [front]}} \
+with style.window_style standard; "living room facing the garden" -> that room's faces = rear. \
+Only what the vocabulary cannot express goes into unsupported_requests.
+- A design system (style.design_system) is chosen only from <project_context> design_systems. \
+The user's explicit values always win over a system's defaults; if an explicit wish is outside \
+the chosen system's allowed lists, do not change the wish — leave design_system null (or pick a \
+compatible system) and explain it in `conflicts`.
 - Never drop or change an explicit requirement silently. If requirements conflict with each \
 other or with the supported scope (e.g. 12 bedrooms in 120 m², 4 storeys), either keep them and \
 explain the conflict in `conflicts`, or choose outcome "clarification" and explain it there.

@@ -41,6 +41,29 @@ describe("generated BuildingModel through the 3D engine", () => {
     expect(index.model.elements.some((e) => e.type === "stair")).toBe(true);
   });
 
+  it("renders a facade display color on the exterior face only (K3 appearance)", () => {
+    // Same generated model with a yellow facade, as the layout engine writes it.
+    const doc = structuredClone(generatedModelJson());
+    for (const el of doc.elements) {
+      if (el.type === "wall" && el.properties.wall_kind === "exterior") {
+        el.properties.finish_right_color = "#e8c547";
+      }
+    }
+    const colored = buildScene(parseBuildingModel(doc));
+    const walls = index.model.elements.filter(
+      (e) => e.type === "wall" && e.properties.wall_kind === "exterior",
+    );
+    expect(walls.length).toBeGreaterThan(0);
+    for (const wall of walls) {
+      const materials = colored.byElement.get(wall.id)![0]!.materials;
+      expect(materials, wall.name).toContain("exterior_wall@#e8c547");
+      expect(materials, wall.name).toContain("interior_wall"); // inside face unchanged
+    }
+    // Without a color (the committed fixture) nothing is tinted.
+    const plain = scene.descriptors.flatMap((d) => d.materials);
+    expect(plain.some((m) => m.includes("@"))).toBe(false);
+  });
+
   it("has sensible bounds and a floor camera preset for every level", () => {
     expect(scene.bounds.max.x - scene.bounds.min.x).toBeGreaterThan(12);
     expect(scene.bounds.max.z).toBeGreaterThan(5.5);

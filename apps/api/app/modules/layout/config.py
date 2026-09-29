@@ -11,7 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.modules.building.enums import RoomType
 from app.modules.building.specification import FacadeMaterial, WindowStyle
 
-ENGINE_VERSION = "layout@1.2.0"  # 1.2.0: stair cores on the facade fit their flights (K2.5)
+ENGINE_VERSION = "layout@1.3.0"  # 1.3.0: BuildingModel 1.2.0; design systems and design intent
+# (facade color, facade-specific window sizes, room orientation; K3). Specs without them build
+# the same geometry as 1.2.0 (geometry fingerprints unchanged).
+# 1.2.0: stair cores on the facade fit their flights (K2.5)
 # 1.1.0: BuildingModel 1.1.0, optional TypeSet (K2)
 
 

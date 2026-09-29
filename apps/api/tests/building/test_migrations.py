@@ -1,4 +1,4 @@
-"""BuildingModel 1.0.0 -> 1.1.0 upgrade-on-read (docs/building-model.md §8)."""
+"""BuildingModel upgrade-on-read: 1.0.0 -> 1.1.0 -> 1.2.0 (docs/building-model.md §8)."""
 
 import copy
 import json
@@ -21,6 +21,7 @@ from tests.building.helpers import DATA_DIR, FIXTURE_PATH, material_ids
 HISTORICAL = DATA_DIR / "fixtures" / "historical"
 DEMO_V1_0 = HISTORICAL / "demo-house.v1.0.0.model.json"
 GENERATED_V1_0 = HISTORICAL / "generated-house.v1.0.0.model.json"
+GENERATED_V1_1 = HISTORICAL / "generated-house.v1.1.0.model.json"  # main before K3
 GOLDEN_01 = DATA_DIR / "fixtures" / "golden" / "01-family-house-280.golden.json"
 
 
@@ -37,20 +38,38 @@ def test_historical_fixtures_are_frozen_1_0_0() -> None:
         assert all("type_ref" not in el for el in doc["elements"])
 
 
-@pytest.mark.parametrize("path", [DEMO_V1_0, GENERATED_V1_0], ids=["demo", "generated"])
-def test_1_0_0_documents_load_as_valid_untyped_1_1_0(path: Path) -> None:
+def test_frozen_1_1_0_fixture_is_1_1_0() -> None:
+    doc = _doc(GENERATED_V1_1)
+    assert doc["schema_version"] == "1.1.0" and "design" not in doc
+    assert all("size_class" not in el["properties"] for el in doc["elements"])
+
+
+@pytest.mark.parametrize(
+    "path", [DEMO_V1_0, GENERATED_V1_0, GENERATED_V1_1], ids=["demo", "generated", "generated-1.1"]
+)
+def test_historical_documents_load_as_valid_current_models(path: Path) -> None:
     model = load_model(_doc(path))
-    assert model.schema_version == SCHEMA_VERSION == "1.1.0"
+    assert model.schema_version == SCHEMA_VERSION == "1.2.0"
+    assert model.design is None  # nothing is inferred on upgrade
+    walls = [el for el in model.elements if el.type == "wall"]
+    windows = [el for el in model.elements if el.type == "window"]
+    assert all(w.properties.finish_right_color is None for w in walls)
+    assert all(w.properties.size_class is None for w in windows)
+    assert errors(validate_model(model, material_ids=material_ids())) == []
+
+
+def test_1_0_0_documents_upgrade_untyped() -> None:
+    model = load_model(_doc(DEMO_V1_0))
     assert model.types == [] and model.assemblies == []
     assert all(el.type_ref is None for el in model.elements)
-    assert errors(validate_model(model, material_ids=material_ids())) == []
 
 
 def test_upgrade_preserves_geometry() -> None:
     demo = load_model(_doc(DEMO_V1_0))
     assert geometry_sha256(demo) == geometry_sha256(load_model_json(FIXTURE_PATH.read_bytes()))
-    generated = load_model(_doc(GENERATED_V1_0))
-    assert geometry_sha256(generated) == _doc(GOLDEN_01)["geometry_sha256"]
+    for path in (GENERATED_V1_0, GENERATED_V1_1):
+        generated = load_model(_doc(path))
+        assert geometry_sha256(generated) == _doc(GOLDEN_01)["geometry_sha256"]
 
 
 def test_upgrade_is_pure_and_idempotent() -> None:
@@ -67,7 +86,7 @@ def test_upgrade_is_pure_and_idempotent() -> None:
 
 def test_current_documents_pass_through_unchanged() -> None:
     doc = _doc(FIXTURE_PATH)
-    assert doc["schema_version"] == "1.1.0"
+    assert doc["schema_version"] == "1.2.0"
     assert upgrade_document(doc) == doc
 
 

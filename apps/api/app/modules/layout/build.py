@@ -16,6 +16,13 @@ from shapely import Polygon as ShapelyPolygon
 from shapely import box, unary_union
 from shapely.geometry.polygon import orient
 
+from app.modules.building.design import (
+    DesignRecord,
+    DesignSystemSnapshot,
+    finishes_of,
+    furniture_substitution,
+    resolve_window_preferences,
+)
 from app.modules.building.elements import (
     Door,
     DoorDimensions,
@@ -58,6 +65,7 @@ from app.modules.building.enums import (
     WallKind,
     WindowKind,
 )
+from app.modules.building.facades import PLAN_SIDE
 from app.modules.building.geometry import Point, segment_overlap_length
 from app.modules.building.hosting import free_intervals, junction_zones
 from app.modules.building.model import (
@@ -181,6 +189,7 @@ class WallPlan:
     left: str
     right: str
     supports: list[str] = field(default_factory=list)
+    right_color: str | None = None  # display color of the right (exterior) face, K3
     occupied: list[tuple[float, float]] = field(default_factory=list)
     # Where other walls join or cross this one (building.hosting.junction_zones); openings
     # stay out of them. Set once all walls of the level exist.
@@ -259,6 +268,15 @@ class _Context:
     room_polys: dict[tuple[int, str], ShapelyPolygon] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
     swing: int = 0
+    design: DesignRecord | None = None  # effective design (K3); None = generic, no intent
+
+    @property
+    def system(self) -> DesignSystemSnapshot | None:
+        return self.design.design_system if self.design is not None else None
+
+    @property
+    def facade_color(self) -> str | None:
+        return self.design.facade_color.hex if self.design and self.design.facade_color else None
 
     def next_name(self, prefix: str, level: int) -> str:
         key = f"{prefix}{level + 1}"
@@ -298,6 +316,8 @@ def _rel(kind: RelationshipKind, target: uuid.UUID) -> Relationship:
 def _walls(ctx: _Context) -> None:
     sk, cfg = ctx.plan.skeleton, ctx.config
     facade = cfg.facade_materials[ctx.spec.style.facade_material]
+    color = ctx.facade_color  # appearance only: the facade material is unchanged
+    finishes = finishes_of(ctx.system)
     top = sk.storeys - 1
     for lv in range(sk.storeys):
         corners = [(0.0, 0.0), (sk.W, 0.0), (sk.W, sk.D), (0.0, sk.D)]
@@ -313,9 +333,10 @@ def _walls(ctx: _Context) -> None:
                     kind=WallKind.EXTERIOR,
                     thickness=cfg.exterior_wall_thickness,
                     material=facade,
-                    left="interior_wall",
+                    left=finishes.interior_wall,
                     right=facade,
                     supports=list(supports),
+                    right_color=color,
                 )
             )
         if lv == 0 and ctx.plan.garage is not None:
@@ -344,9 +365,10 @@ def _walls(ctx: _Context) -> None:
                         kind=WallKind.EXTERIOR,
                         thickness=cfg.exterior_wall_thickness,
                         material=facade,
-                        left="interior_wall",
+                        left=finishes.interior_wall,
                         right=facade,
                         supports=["roof:garage"],
+                        right_color=color,
                     )
                 )
         level = ctx.plan.levels[lv]
@@ -377,8 +399,8 @@ def _walls(ctx: _Context) -> None:
                     kind=WallKind.INTERIOR,
                     thickness=cfg.interior_wall_thickness,
                     material="interior_wall",
-                    left="tile" if left_tile else "interior_wall",
-                    right="tile" if right_tile else "interior_wall",
+                    left=finishes.wet_wall if left_tile else finishes.interior_wall,
+                    right=finishes.wet_wall if right_tile else finishes.interior_wall,
                 )
             )
 
@@ -434,6 +456,7 @@ class _Window:
     kind: WindowKind
     mullions: int
     role: str  # type role (building/types.py TYPE_ROLES)
+    size_class: WindowStyle | None = None  # main windows of habitable rooms (K3)
 
 
 def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
@@ -670,13 +693,21 @@ def _facade_segments(ctx: _Context, region: Region) -> list[tuple[str, Segment]]
 
 
 def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
+    """Windows on the facades. Each facade has a size class (building.design
+    .resolve_window_preferences): without window intent every facade uses style.window_style
+    (the pre-K3 behaviour); with intent, preferred facades get the emphasised size and are
+    glazed first, excluded facades only standard windows. Placement uses the same host-wall
+    interval arithmetic the geometric checks validate with (WallPlan.place)."""
     sk, cfg, rules = ctx.plan.skeleton, ctx.config, ctx.profile
     wall_h = ctx.wall_height
-    style = ctx.spec.style.window_style
-    preset = cfg.window_presets[style]
-    ratio = max(preset.glazing_ratio, rules.windows.min_glazing_to_floor_ratio * 1.15)
+    by_facade = resolve_window_preferences(ctx.spec)
+    side_style = {PLAN_SIDE[f]: s for f, s in by_facade.items()}
+    intent = ctx.spec.design.windows
+    preferred_sides = {PLAN_SIDE[f] for f in intent.preferred_facades} if intent else set()
+    min_ratio = rules.windows.min_glazing_to_floor_ratio * 1.15
 
-    def dims(level: int) -> tuple[float, float]:
+    def dims(level: int, style: WindowStyle) -> tuple[float, float]:
+        preset = cfg.window_presets[style]
         sill = preset.sill
         if level > 0:
             sill = max(sill, rules.windows.guard_required_below_sill_m)
@@ -694,6 +725,7 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
         kind: WindowKind,
         mullions: int,
         role: str,
+        size_class: WindowStyle | None = None,
     ) -> float:
         wall = _facade_wall(ctx, level, side)
         width = rnd(width)
@@ -702,7 +734,9 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
         offset = wall.place(seg, width, margin=cfg.window_margin)
         if offset is None:
             return 0.0
-        windows.append(_Window(key, wall, offset, width, height, sill, kind, mullions, role))
+        windows.append(
+            _Window(key, wall, offset, width, height, sill, kind, mullions, role, size_class)
+        )
         return width * height
 
     def glazing_of(region: Region) -> float:
@@ -726,22 +760,34 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
             rtype = region.room_type
             n = 0
             if region.kind == "room" and rtype in HABITABLE:
-                sill, height = dims(lv)
-                kind = (
-                    WindowKind.PANORAMIC
-                    if style == WindowStyle.PANORAMIC and lv == 0
-                    else WindowKind.CASEMENT
-                )
-                needed = ratio * region.area - glazing_of(region)
                 primary = "S" if region.rects[0].y0 < 1e-6 else "N"
+                # Preferred (emphasised) facades first; without intent this is the old order.
                 ordered = sorted(
-                    segments, key=lambda s: (s[0] != primary, -s[1].length, s[0], s[1].a0)
+                    segments,
+                    key=lambda s: (
+                        s[0] not in preferred_sides,
+                        s[0] != primary,
+                        -s[1].length,
+                        s[0],
+                        s[1].a0,
+                    ),
                 )
+                first = cfg.window_presets[side_style[ordered[0][0]]]
+                ratio = max(first.glazing_ratio, min_ratio)
+                needed = ratio * region.area - glazing_of(region)
                 for side, seg in ordered:
                     if needed <= 1e-6 or n >= 3:
                         break
+                    style = side_style[side]
+                    preset = cfg.window_presets[style]
+                    sill, height = dims(lv, style)
+                    kind = (
+                        WindowKind.PANORAMIC
+                        if style == WindowStyle.PANORAMIC and lv == 0
+                        else WindowKind.CASEMENT
+                    )
                     available = seg.length - 2 * cfg.window_margin
-                    width = min(max(needed / height, min_w), available, 4.8)
+                    width = min(max(needed / height, min_w), available, 4.8) if height > 0 else 0
                     if width < min_w - 1e-6:
                         continue
                     width = math.floor(width / 0.05 + 1e-9) * 0.05
@@ -757,6 +803,7 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
                         kind,
                         mullions,
                         WINDOW_STYLE_ROLE[style],
+                        style,
                     )
                     if got > 0:
                         needed -= got
@@ -844,9 +891,12 @@ def build_model(
     previous_ids: Mapping[str, uuid.UUID] | None = None,
     furniture: bool = True,
     type_set: TypeSet | None = None,
+    design: DesignRecord | None = None,
 ) -> BuildingModel:
     ids = Ids(id_namespace, previous_ids)
-    ctx = _Context(plan, spec, profile, config, ids, seed)
+    ctx = _Context(plan, spec, profile, config, ids, seed, design=design)
+    finishes = finishes_of(ctx.system)
+    floor_finish = {"parquet": finishes.dry_floor, "tile": finishes.wet_floor}
     sk = plan.skeleton
     f2f = spec.targets.floor_to_floor_height_m
     levels = [
@@ -889,7 +939,8 @@ def build_model(
                 raise BuildError(f"{region.name}: room region without a type")
             floor = FLOORS.get(region.room_type, "floor")
             if finish == FinishLevel.ECONOMY and floor == "parquet":
-                floor = "floor"
+                floor = "floor"  # explicit finish level first, then the design system
+            floor = floor_finish.get(floor, floor)
             adjacent = sorted(
                 other.key
                 for other in level.regions
@@ -968,6 +1019,7 @@ def build_model(
                     load_bearing=exterior,
                     finish_left_id=w.left,
                     finish_right_id=w.right,
+                    finish_right_color=w.right_color,
                 ),
             )
         )
@@ -1011,7 +1063,10 @@ def build_model(
                 semantic_key=win.key,
                 dimensions=WindowDimensions(width=win.width, height=win.height),
                 properties=WindowProperties(
-                    window_kind=win.kind, frame_material_id="window_frame", mullions=win.mullions
+                    window_kind=win.kind,
+                    frame_material_id="window_frame",
+                    mullions=win.mullions,
+                    size_class=win.size_class,
                 ),
             )
         )
@@ -1020,13 +1075,21 @@ def build_model(
     elements += _stairs_and_railings(ctx, levels, room_elements)
     elements += _roofs(ctx, levels)
     if furniture:
-        elements += furnish(ctx.plan, room_elements, doors_to_spans(doors), levels, ids)
+        palette = furniture_substitution(ctx.system)
+        elements += [
+            f.model_copy(update={"material_id": palette[f.material_id]})
+            if f.material_id in palette
+            else f
+            for f in furnish(ctx.plan, room_elements, doors_to_spans(doors), levels, ids)
+        ]
 
     roles = {d.key: d.role for d in doors} | {w.key: w.role for w in windows}
     elements, types, assemblies = attach_types(elements, roles, type_set)
     generator = f"{config.engine_version} · rules {profile.ref}"
     if type_set is not None:
         generator += f" · types {type_set.source} {type_set.mapping}"
+    if ctx.system is not None:
+        generator += f" · design {ctx.system.id} ({ctx.system.source})"
 
     return BuildingModel(
         schema_version=SCHEMA_VERSION,
@@ -1045,6 +1108,7 @@ def build_model(
         metadata=ModelMetadata(source="layout", generator=generator),
         types=types,
         assemblies=assemblies,
+        design=design,
     )
 
 
@@ -1105,6 +1169,11 @@ def attach_types(
             )
         elif isinstance(el, Stair | Railing) and isinstance(p, StairTypeParams | RailingTypeParams):
             update["material_id"] = p.material_id
+            if isinstance(el, Railing) and isinstance(p, RailingTypeParams):
+                # The railing kind is a fixed type parameter (e.g. a glass stair balustrade).
+                update["properties"] = el.properties.model_copy(
+                    update={"railing_kind": p.railing_kind}
+                )
         out.append(el.model_copy(update=update))
     types = [used[k] for k in sorted(used)]
     assembly_ids = sorted({t.assembly_id for t in types if t.assembly_id is not None})

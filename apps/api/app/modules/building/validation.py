@@ -15,6 +15,7 @@ from shapely import Point as ShapelyPoint
 from shapely import Polygon as ShapelyPolygon
 from shapely import unary_union
 
+from app.modules.building.design_checks import check_model_design
 from app.modules.building.elements import (
     Door,
     Furniture,
@@ -132,7 +133,7 @@ class _Checker:
             refs += [
                 (f"/properties/{k}", v)
                 for k, v in props.items()
-                if k.endswith("material_id") or k.startswith("finish_")
+                if k.endswith("material_id") or (k.startswith("finish_") and k.endswith("_id"))
             ]
             for suffix, mid in refs:
                 if mid is not None and mid not in self.material_ids:
@@ -489,7 +490,12 @@ def validate_model(
     checker.stairs()
     checker.railings()
     checker.reachability()
-    return checker.issues + check_geometry(model) + check_types(model, checker.material_ids)
+    return (
+        checker.issues
+        + check_geometry(model)
+        + check_types(model, checker.material_ids)
+        + check_model_design(model)
+    )
 
 
 Point2 = tuple[float, float]

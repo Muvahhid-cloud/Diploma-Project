@@ -11,10 +11,13 @@ from typing import Any
 
 from app.modules.ai.context import GenerationContext
 from app.modules.ai.schemas.generation import GenerationOptions, SpecificationDraft
+from app.modules.building.appearance import PALETTE
 from app.modules.building.enums import RoofType
+from app.modules.building.facades import FACADE_SYNONYMS
 from app.modules.building.specification import (
     ArchitecturalStyle,
     FacadeMaterial,
+    FacadeSide,
     FinishLevel,
     InteriorStyle,
     RoomFeature,
@@ -22,7 +25,7 @@ from app.modules.building.specification import (
     WindowStyle,
 )
 
-PROMPT_VERSION = "building-generation@1"
+PROMPT_VERSION = "building-generation@2"  # @2 (K3): design systems and design intent
 OUTPUT_NAME = "building_specification_draft"
 OUTPUT_DESCRIPTION = (
     "The interpreted building request: a BuildingSpecification (intent only, no geometry) "
@@ -55,6 +58,24 @@ def vocabulary() -> str:
             "- budget: {amount: decimal string, currency: ISO-4217 code}. A constraint only.",
             "- site.region_code: only when the user names a place (e.g. KZ-ALA for Almaty,"
             " KZ-AST for Astana).",
+            f"- Facades: {_values(FacadeSide)}. front = street/entrance side; rear = garden/"
+            "backyard/back side; left/right as seen from the street. Map "
+            + ", ".join(f'"{w}"' for w in sorted(FACADE_SYNONYMS))
+            + " to these values.",
+            "- design.facade_color: the exterior wall color the user asks for (display color of"
+            " the facade finish, not a material change). A palette name: "
+            f"{', '.join(PALETTE)}; or #rrggbb when the user gives an exact color."
+            " Null when no color is requested.",
+            "- design.windows: {emphasis: large|panoramic, preferred_facades: [...],"
+            " excluded_facades: [...]} when the user wants large/panoramic windows on particular"
+            " facades. preferred_facades get the emphasised windows; excluded_facades never get"
+            " them (standard windows there). Keep style.window_style for the other facades"
+            " (standard unless the user wants large windows everywhere).",
+            "- rooms[].faces: front|rear when a room should face the street or the garden/"
+            "backyard (left/right are not supported for rooms).",
+            "- style.design_system: only an id listed in <project_context> design_systems; null"
+            " when the list is empty or the user names no matching direction. With a design"
+            " system, every style value must be in that system's allowed lists.",
         ]
     )
 
@@ -112,6 +133,8 @@ def context_block(context: GenerationContext, options: GenerationOptions | None)
         "rules_profile": context.rules_profile,
         "room_minimums": [m.model_dump() for m in context.room_minimums],
         "max_room_share_of_gross_floor_area": context.max_room_share_of_gfa,
+        # Usable (approved) design systems; empty = style.design_system must stay null.
+        "design_systems": [d.model_dump() for d in context.design_systems],
     }
     parts = [
         "<project_context>",

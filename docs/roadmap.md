@@ -145,8 +145,8 @@ Goal: ground the AI and the deterministic engines in structured, versioned, sour
 |---|---|---|
 | K1 — Knowledge Foundation | pure `modules/catalog`; provenance/source model; knowledge-item, ontology, glossary, drawing-profile and region-profile schemas; loader, registry, integrity, hash lock; `core@1` pack; Georgievsky 2004 source record and `spds-georgievsky-2004@1` pack (`spds@1` drawing profile); `generic@1` region profile | ☑ 2026-09-28 |
 | K2 — Families, Types, Assemblies | family/type/assembly/role-mapping records + integrity; generic type pack (draft, migrated `LayoutConfig` defaults); gated resolver; rules checks for types; BuildingModel 1.1.0 (`type_ref`, type/assembly snapshots, ceiling ref) with upgrade-on-read; layout `TypeSet`; properties panel type section | ☑ 2026-09-28 (branch, awaiting review) |
-| K2.5 — Architectural Geometry & Placement | geometric invariants (hosting, opening placement, walls, room boundaries vs walls, relationships, levels, stairs vs slabs, roofs vs supports, type fit) with a constraint catalog and machine-readable findings; derived coordination axes; constraint-aware layout (door fit before the search, stair lanes in the search, shared opening placement, validation of every candidate); layout@1.2.0 | ◐ 2026-09-29 (branch `phase-3.5-k2.5-geometry`, awaiting review) |
-| K3 — Design Systems | coherent combinations of types, assemblies, roofs, finishes, openings | ☐ |
+| K2.5 — Architectural Geometry & Placement | geometric invariants (hosting, opening placement, walls, room boundaries vs walls, relationships, levels, stairs vs slabs, roofs vs supports, type fit) with a constraint catalog and machine-readable findings; derived coordination axes; constraint-aware layout (door fit before the search, stair lanes in the search, shared opening placement, validation of every candidate); layout@1.2.0 | ☑ 2026-09-29 (on main) |
+| K3 — Design Systems + expressive design intent | design-system records (4 editorial drafts: modern-minimal, contemporary-warm, classic-brick, scandinavian-timber) with integrity and gated resolution; spec 1.1.0 design intent (facade color, facade-specific window emphasis, room orientation, design system); BuildingModel 1.2.0 design record, wall display colors, window size classes; deterministic precedence and facade model; layout@1.3.0 integration; design checks in validate_model; renderer color keys; form controls; prompt @2 | ◐ 2026-09-29 (branch `phase-3.5-k3-design-systems`, awaiting review) |
 | K4 — Templates | real building configurations (programme, relationships, circulation, structural concept, constraints, layout hints); needs sources beyond the drafting handbook | ☐ |
 | K5 — Knowledge API and Units | read-only catalog API; imperial display/input conversion over SI internals | ☐ |
 | K6 — Optional Structural Elements | structural element types (foundations, columns, beams, lintels) | ☐ |
@@ -183,6 +183,18 @@ Goal: ground the AI and the deterministic engines in structured, versioned, sour
 | Defects found in layout@1.1.0 | ☑ fixed: stair flights cut into facade walls (reference specs 05, 06, 09); storeys < 2.6 m with sliding doors failed as LAYOUT_INVALID |
 | Geometry regression | ☑ 7/10 reference fingerprints unchanged; 05/06/09 changed deliberately; typed = untyped; demo and 1.0.0 fixtures valid |
 | Determinism | ☑ same input ⇒ same model; two `PYTHONHASHSEED`s; seeds of unaffected skeletons unchanged |
+
+**K3 checklist** (verified 2026-09-29, branch `phase-3.5-k3-design-systems`):
+
+| Criterion | Result |
+|---|---|
+| Design systems in the catalog | ☑ `DesignSystemRecord` + integrity (allow-lists, defaults, palette, materials, mapping, approved dependencies); 4 editorial, region-neutral systems, all **draft**; gated resolution to snapshots; nothing approved |
+| Expressive intent in the spec (1.1.0, additive) | ☑ `design.facade_color`, `design.windows` (emphasis, preferred/excluded facades), `rooms[].faces`, `style.design_system`; 1.0.0 specs unchanged |
+| Color vs material | ☑ display color on the wall face (`finish_right_color`), material unchanged; renderer draws the library preset in that color |
+| Facade model | ☑ derived from wall normals (street = −y = front); one synonym table for prompt and mock |
+| Intent changes the generated model | ☑ per-facade window size classes, preferred facades glazed first, excluded facades standard only; rooms facing front/rear; `design_checks` in `validate_model` |
+| Backward compatibility | ☑ all 10 reference geometry fingerprints equal to main; 1.0.0 and frozen 1.1.0 models upgrade on read; BuildingModel 1.2.0 |
+| Live OpenRouter test (Claude Opus 5.5, one call) | ☑ yellow facade on all 11 exterior walls; 3 panoramic windows, all on the rear; front: standard only; living + dining on the rear; no K2.5, design or rules findings; 1 call, no repair |
 
 ## Phase 4 — Quantities & preliminary cost ☐
 - Material library (YAML → DB); item-code vocabulary

@@ -1,8 +1,46 @@
 import type { BuildingSpecification } from "@buildai/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { z } from "zod";
 
 import { apiRequest } from "@/lib/api/client";
 import { jobSchema, specValidationSchema } from "@/lib/api/schemas";
+
+// GET /design-options (K3): usable design systems, unavailable ones with the reason, and the
+// facade color palette. Only the fields the form uses are validated.
+const designSystemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  source: z.string(),
+  style_tags: z.array(z.string()),
+  roof: z.object({
+    types: z.array(z.string()),
+    default: z.string(),
+    default_pitch_deg: z.number().nullable(),
+  }),
+  windows: z.object({ styles: z.array(z.string()), default: z.string() }),
+  facade: z.object({
+    materials: z.array(z.string()),
+    default_material: z.string(),
+    colors: z.array(z.string()),
+    default_color: z.string().nullable(),
+    custom_colors: z.boolean(),
+  }),
+});
+export const designOptionsSchema = z.object({
+  available: z.array(designSystemSchema),
+  unavailable: z.array(z.object({ id: z.string(), name: z.string(), reason: z.string() })),
+  palette: z.array(z.object({ name: z.string(), hex: z.string() })),
+});
+export type DesignOptions = z.infer<typeof designOptionsSchema>;
+export type DesignSystemOption = z.infer<typeof designSystemSchema>;
+
+export function useDesignOptions() {
+  return useQuery({
+    queryKey: ["design-options"],
+    queryFn: () => apiRequest("/design-options", designOptionsSchema),
+    staleTime: 60_000,
+  });
+}
 
 const project = (projectId: string) => `/projects/${encodeURIComponent(projectId)}`;
 

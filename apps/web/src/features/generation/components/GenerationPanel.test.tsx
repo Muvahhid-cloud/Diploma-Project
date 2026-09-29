@@ -42,9 +42,18 @@ function renderPanel(onGenerated = vi.fn()) {
 
 afterEach(() => vi.unstubAllGlobals());
 
+// GET /design-options is requested when the panel mounts (K3).
+const designOptions = () =>
+  jsonResponse({
+    available: [],
+    unavailable: [{ id: "modern-minimal", name: "Modern minimal", reason: "it is draft" }],
+    palette: [{ name: "yellow", hex: "#e8c547" }],
+  });
+
 describe("GenerationPanel", () => {
   it("validates, starts a job, polls it and opens the new version", async () => {
     const fetch = mockFetch(
+      designOptions(),
       jsonResponse({ valid: true, issues: [], rules_profile: "generic-residential@1" }),
       jsonResponse(job({}), 202),
       jsonResponse(job({ status: "running", stage: "layout", progress: 0.25 })),
@@ -59,16 +68,18 @@ describe("GenerationPanel", () => {
 
     await waitFor(() => expect(onGenerated).toHaveBeenCalledWith(VERSION), { timeout: 3000 });
     const urls = fetch.mock.calls.map((c) => String(c[0]));
-    expect(urls[0]).toBe(`/api/v1/projects/${PROJECT}/spec/validate`);
-    expect(urls[1]).toBe(`/api/v1/projects/${PROJECT}/generate`);
-    expect(urls[2]).toBe(`/api/v1/jobs/${JOB}`);
-    const body = JSON.parse(fetch.mock.calls[1]![1]!.body as string);
+    expect(urls[0]).toBe("/api/v1/design-options");
+    expect(urls[1]).toBe(`/api/v1/projects/${PROJECT}/spec/validate`);
+    expect(urls[2]).toBe(`/api/v1/projects/${PROJECT}/generate`);
+    expect(urls[3]).toBe(`/api/v1/jobs/${JOB}`);
+    const body = JSON.parse(fetch.mock.calls[2]![1]!.body as string);
     expect(body.seed).toBe(0);
     expect(body.spec.schema_version).toBe("1.0.0");
   });
 
   it("shows rules errors and does not start a job", async () => {
     const fetch = mockFetch(
+      designOptions(),
       jsonResponse({
         valid: false,
         rules_profile: "generic-residential@1",
@@ -86,7 +97,7 @@ describe("GenerationPanel", () => {
     renderPanel();
     await userEvent.click(screen.getByRole("button", { name: "Generate house" }));
     expect(await screen.findByText(/needs at least one bathroom/)).toBeVisible();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2); // design options + validation, no job
   });
 });
 
