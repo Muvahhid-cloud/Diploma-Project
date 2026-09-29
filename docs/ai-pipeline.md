@@ -7,7 +7,7 @@ Status: **Implemented for Phase 3 (v0.3)** · Code: `apps/api/app/modules/ai/`
 AI is used for **language → structure**, never for geometry. The AI produces a `BuildingSpecification` (intent: program, targets, style, features); the deterministic layout engine makes every spatial decision and the procedural 3D engine renders the resulting `BuildingModel`. The model never outputs coordinates, wall geometry, element ids, meshes, images, code or costs.
 
 ```
-prompt ──▶ AIProvider (mock | anthropic) ──▶ SpecificationDraft (structured output)
+prompt ──▶ AIProvider (mock | anthropic | openrouter) ──▶ SpecificationDraft (structured output)
        ──▶ Pydantic (tier 1) ──▶ rules spec checks + form fields (tier 2)
        ──▶ [errors → one repair call → validate again] ──▶ BuildingSpecification
        ──▶ layout engine (tier 3, deterministic) ──▶ BuildingModel ──▶ model validation
@@ -38,25 +38,28 @@ class AIProvider(ABC):
 |---|---|---|
 | `MockAIProvider` | `providers/mock.py` + `mock_interpreter.py` | **Development, tests, CI, offline.** Deterministic rule/regex interpreter: area, storeys, bedroom/bathroom counts, family size, garage cars, balcony (and its floor), terrace, study/WC/laundry/storage, open kitchen, style/interior style, windows, roof, facade, budget (KZT/USD/EUR, "300,000,000 KZT", "$250k"), city → region code, unsupported items (pool, sauna, basement…), prompt-injection phrases. Records every default as an assumption; asks for clarification when nothing describes the house or the request is out of scope (> 3 storeys, area outside 20–2000 m²). Refused when `ENVIRONMENT=production`. |
 | `AnthropicProvider` | `providers/anthropic.py` | **First real provider.** One Messages API call via the official `anthropic` SDK (the only file importing it — enforced by import-linter). The answer is constrained with **structured outputs** (`output_config.format = json_schema`), which works on every current Claude model (forced `tool_choice` is rejected by newer models). Numeric/length constraints unsupported by structured outputs are moved into field descriptions and enforced by Pydantic afterwards. The static system prompt carries a cache breakpoint. SDK errors map to `AI_TIMEOUT` / `AI_UNAVAILABLE`; `refusal`/`max_tokens` stops yield "no object" (→ repair). |
-| OpenAI-compatible | — | Later (roadmap). |
+| `OpenRouterProvider` | `providers/openrouter.py` | **OpenAI-compatible gateway** (OpenRouter, e.g. `anthropic/claude-opus-5.5`). One `POST /chat/completions` over plain `httpx` (no vendor SDK). Structured outputs via `response_format = {type: json_schema, strict: true}` with the same transformed `SpecificationDraft` schema (`providers/json_schema.py`, shared with the Anthropic adapter); `provider.require_parameters = true` so OpenRouter never routes to an endpoint that would drop the schema. The system prompt carries a `cache_control` breakpoint (honoured by Anthropic upstreams). **Schema-size fallback:** Claude's structured outputs compile the schema into a grammar, and the full `SpecificationDraft` schema (≈50 optional properties, 23 unions) is rejected with "compiled grammar is too large" (400, before generation, not billed — observed live 2026-09-29 on every Claude upstream). On that specific rejection the provider switches — for this and every later call — to `prompt_schema` mode: the full JSON Schema is appended to the system prompt (`prompts.shared.schema_in_prompt_block`, versioned `schema-in-prompt@1`; the generation/repair prompts are unchanged) and no grammar is requested. Validation is identical in both modes; `metadata.output_mode` reports which was used. The answer is parsed with `json.loads` only — prose, fenced JSON, refusals (`message.refusal`, `content_filter`) and `length` cut-offs yield "no object" (→ one repair, then `AI_INVALID_OUTPUT`). HTTP errors map to `AI_UNAVAILABLE` (400/401/402/403/404/429/5xx, errors inside a 200 body or a choice, unexpected body) or `AI_TIMEOUT` (client timeout, 408); 408/429/5xx/connection errors are retried `AI_MAX_RETRIES` times (Retry-After honoured, ≤ 10 s), timeouts are not. Error details are redacted (key never included) and truncated. Usage (`prompt_tokens`, `completion_tokens`, `cost` in USD credits, cached/reasoning tokens, upstream provider, generation id) is returned; the returned `model` is recorded on `ai_runs`. |
 
 Selection: `get_ai_provider()` (`providers/__init__.py`) from settings; `use_ai_provider()` overrides it in tests.
 
 | Setting | Default | Notes |
 |---|---|---|
-| `AI_PROVIDER` | `mock` | `mock` \| `anthropic`; `mock` refused in production |
+| `AI_PROVIDER` | `mock` | `mock` \| `anthropic` \| `openrouter`; `mock` refused in production |
 | `AI_MODEL` | — | Required for `anthropic` (e.g. `claude-opus-5`); never hard-coded in business logic |
 | `ANTHROPIC_API_KEY` | — | Required for `anthropic`; `SecretStr`, backend only, never logged |
 | `ANTHROPIC_BASE_URL` | SDK default | Optional gateway |
-| `AI_EFFORT` | model default | `output_config.effort` |
-| `AI_TIMEOUT_SECONDS` / `AI_MAX_RETRIES` | 120 / 1 | SDK timeout and transient retries |
+| `OPENROUTER_API_KEY` | — | Required for `openrouter`; `SecretStr`, backend only, never logged |
+| `OPENROUTER_MODEL` | — | Required for `openrouter` (e.g. `anthropic/claude-opus-5.5`); never hard-coded in business logic |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | Optional override |
+| `AI_EFFORT` | model default | `output_config.effort` (anthropic) / `reasoning.effort` (openrouter; `max` → `xhigh`) |
+| `AI_TIMEOUT_SECONDS` / `AI_MAX_RETRIES` | 120 / 1 | Request timeout and transient retries |
 | `AI_MAX_REPAIRS` | 1 | Repair calls after invalid output (0–2) |
 | `AI_MAX_OUTPUT_TOKENS` | 16000 | Non-streaming request |
 | `AI_MAX_PROMPT_CHARS` | 4000 | Also capped by the request schema |
 | `AI_GENERATIONS_PER_HOUR` | 30 | Per user (429 `AI_RATE_LIMITED`) |
 | `AI_LOG_PROMPTS` | false | Otherwise only prompt length + sha256 prefix are logged |
 
-The API refuses to start with `AI_PROVIDER=anthropic` and no key/model.
+The API refuses to start with `AI_PROVIDER=anthropic` or `openrouter` and no key/model.
 
 ## 3. Prompts (`ai/prompts/`, version `building-generation@1`)
 
@@ -126,6 +129,7 @@ Deviations are never hidden: the completed record lists all warnings (AI conflic
 ## 8. Observability & persistence
 
 - `ai_generations` (history) and `ai_runs` (one row per provider call) — see [database.md](database.md). No secrets are stored.
+- One log line per provider call (`ai_run`: task, provider, model, status, code, latency, tokens, provider-reported `cost_usd` when available — logged only, not stored; no billing).
 - One structured log line per generation: id, project, provider, model, status, error code, stage, duration, repairs, tokens, warning count, version, prompt length + hash (full prompt only with `AI_LOG_PROMPTS=true`). Provider errors are logged with technical detail server-side; keys, passwords and JWTs are never logged.
 
 ## 9. Testing
@@ -133,12 +137,14 @@ Deviations are never hidden: the completed record lists all warnings (AI conflic
 - All automated tests use `MockAIProvider` or a scripted test double; CI never calls a paid API (`tests/conftest.py` forces `AI_PROVIDER=mock`).
 - Unit: prompt construction and injection quoting, mock interpretation (demo prompt, defaults, clarification, conflicts, unsupported, budget/region, form fields), interpreter (valid, non-JSON, unsupported room type, invalid dimensions, missing fields, extra geometry fields, rules errors, repair changes, provider errors, form-field mismatch), Anthropic adapter against a fake SDK client (request shape, parsing, refusal/truncation, error mapping, schema transformation), provider selection and settings guards, context/tools, requirement checks.
 - Integration (real API + PostgreSQL): NL → mock → spec → layout → model → version for the demo prompt and ten other prompts; history; clarification; injection; infeasible requirements; AI outage; repair; permanent invalid output; auth; ownership; validation; rate limit; concurrency; interrupted generations; determinism (same prompt + seed ⇒ same `model_hash`).
-- Live: `tests/ai/test_live_anthropic.py` runs only with `RUN_LIVE_AI_TESTS=true` and `ANTHROPIC_API_KEY`.
+- OpenRouter adapter against `httpx.MockTransport` (`tests/ai/test_openrouter_provider.py`): request shape, parsing, usage/cost, refusal/truncation/prose, every HTTP status class, timeout, network error, retries, unexpected bodies, errors in 200 bodies, key redaction, end-to-end through `interpret`.
+- Live: `tests/ai/test_live_anthropic.py` / `test_live_openrouter.py` run only with `RUN_LIVE_AI_TESTS=true` and the provider's key (and `OPENROUTER_MODEL`).
 - Web: generated validators against captured API responses, prompt form, progress, clarification, failure, summary.
 
 ## 10. Known limitations
 
-- The Anthropic provider has been exercised only against a fake SDK client and the opt-in live test; the live test has not been run in this repository yet (no project credentials configured).
+- The Anthropic provider has been exercised only against a fake SDK client and the opt-in live test; the live test has not been run in this repository yet (no project credentials configured). It sends the same strict schema that Claude rejected through OpenRouter ("compiled grammar is too large"), so it will most likely fail the same way until it gets the same fallback or a smaller transport schema.
+- In `prompt_schema` mode the output is not grammar-constrained: the model can return invalid JSON or a schema violation, which the interpreter repairs once and otherwise rejects (never accepted).
 - The mock interpreter understands common English phrasings only; it is a development tool, not a language model.
 - No prompt eval suite yet (the roadmap's ~50-prompt eval is deferred); the mock prompts are covered by parametrized tests.
 - Generation runs in-process (ADR-010): a restart fails running generations (`JOB_INTERRUPTED`).

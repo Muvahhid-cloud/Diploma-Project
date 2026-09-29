@@ -3,6 +3,8 @@
 Runs against the real API and PostgreSQL, without any external AI service.
 """
 
+import json
+import logging
 import uuid
 from typing import Any
 
@@ -177,11 +179,19 @@ async def test_infeasible_requirements_fail_with_reasons(client: Any) -> None:
     assert gen["stage"] == "layout"
 
 
-async def test_ai_outage_fails_cleanly_and_is_recorded(client: Any) -> None:
+async def test_ai_outage_fails_cleanly_and_is_recorded(
+    client: Any, caplog: pytest.LogCaptureFixture
+) -> None:
     h = await _auth(client)
     pid = await _project(client, h)
-    with use_ai_provider(ScriptedAIProvider(AIUnavailableError("503 from vendor"))):
+    with (
+        caplog.at_level(logging.ERROR, logger="app.modules.ai.orchestrator"),
+        use_ai_provider(ScriptedAIProvider(AIUnavailableError("503 from vendor"))),
+    ):
         gen = await _generate(client, h, {"project_id": pid, "prompt": DEMO_PROMPT})
+    # The technical detail goes to the server log only (regression: it was dropped).
+    assert "503 from vendor" in caplog.text
+    assert "503 from vendor" not in json.dumps(gen)
     assert gen["status"] == "failed"
     assert gen["error"] == {
         "code": "AI_UNAVAILABLE",

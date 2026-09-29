@@ -13,6 +13,7 @@ as an `ai_runs` row by the caller), also when the interpretation fails.
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import ValidationError
@@ -51,6 +52,7 @@ class AttemptRecord:
     output_tokens: int = 0
     latency_ms: int = 0
     error_code: str | None = None
+    cost_usd: Decimal | None = None  # provider-reported, when available (logged, not stored)
 
 
 @dataclass(frozen=True)
@@ -193,6 +195,7 @@ def _record(
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         latency_ms=result.latency_ms,
+        cost_usd=result.cost_usd,
     )
 
 

@@ -29,6 +29,21 @@ def create_provider(settings: Settings) -> AIProvider:
             max_retries=settings.ai_max_retries,
             effort=settings.ai_effort,
         )
+    if settings.ai_provider == "openrouter":
+        if settings.openrouter_api_key is None or not settings.openrouter_model:
+            raise AIConfigurationError(
+                "openrouter: OPENROUTER_API_KEY and OPENROUTER_MODEL are required"
+            )
+        from app.modules.ai.providers.openrouter import OpenRouterProvider
+
+        return OpenRouterProvider(
+            api_key=settings.openrouter_api_key.get_secret_value(),
+            model=settings.openrouter_model,
+            base_url=settings.openrouter_base_url,
+            timeout_s=settings.ai_timeout_seconds,
+            max_retries=settings.ai_max_retries,
+            effort=settings.ai_effort,
+        )
     raise AIConfigurationError(f"unknown AI_PROVIDER {settings.ai_provider!r}")
 
 

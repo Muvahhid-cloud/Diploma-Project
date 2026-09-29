@@ -27,6 +27,14 @@ ANTHROPIC_API_KEY=...
 AI_MODEL=claude-opus-5
 ```
 
+or, through OpenRouter (OpenAI-compatible API, structured outputs):
+
+```bash
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=anthropic/claude-opus-5.5
+```
+
 The specification form and reference presets from Phase 2 are still available ("Specification form" tab), and the hand-authored Phase 1 demo house is at http://localhost:3000 (no login).
 
 Next: **Phase 4** — quantities and preliminary cost. See [docs/roadmap.md](docs/roadmap.md).

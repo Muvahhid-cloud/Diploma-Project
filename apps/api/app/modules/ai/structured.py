@@ -1,6 +1,7 @@
 """Provider-neutral request/response types shared by prompts, providers and the interpreter."""
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -42,6 +43,8 @@ class StructuredResult:
     output_tokens: int = 0
     latency_ms: int = 0
     stop_reason: str | None = None
+    # Provider-reported request cost in USD (OpenRouter credits); None when not reported.
+    cost_usd: Decimal | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

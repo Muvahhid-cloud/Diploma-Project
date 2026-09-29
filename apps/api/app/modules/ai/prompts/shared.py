@@ -65,6 +65,29 @@ def output_schema_json() -> dict[str, Any]:
     return SpecificationDraft.model_json_schema(mode="validation")
 
 
+SCHEMA_IN_PROMPT_VERSION = "schema-in-prompt@1"
+
+
+def schema_in_prompt_block(schema: dict[str, Any]) -> str:
+    """System-prompt appendix for providers whose structured outputs cannot compile the schema.
+
+    Used only as a fallback (providers/openrouter.py): the answer is still parsed with
+    `json.loads` alone and validated exactly like a structured output. Versioned separately
+    (`SCHEMA_IN_PROMPT_VERSION`) because the generation/repair prompts themselves do not change.
+    """
+    return "\n".join(
+        [
+            "<response_schema>",
+            json.dumps(schema, ensure_ascii=False, separators=(",", ":")),
+            "</response_schema>",
+            f"The response schema above is the JSON Schema of `{OUTPUT_NAME}`. Answer with"
+            " exactly one JSON object that validates against it: no text before or after it,"
+            " no Markdown code fences, no comments. Respect every enum, minimum, maximum and"
+            " length limit in the schema and omit properties you do not need.",
+        ]
+    )
+
+
 _TAG_RE = re.compile(rf"</?\s*{USER_TAG}\s*>", re.IGNORECASE)
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 

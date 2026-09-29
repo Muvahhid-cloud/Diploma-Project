@@ -83,6 +83,21 @@ def _record_attempts(
 ) -> None:
     for attempt in attempts:
         session.add(_run_row(gen, attempt))
+        # Provider-reported cost is logged only (no billing storage); never includes secrets.
+        logger.info(
+            "ai_run generation=%s task=%s provider=%s model=%s status=%s code=%s ms=%s "
+            "tokens_in=%s tokens_out=%s cost_usd=%s",
+            gen.id,
+            attempt.task.value,
+            attempt.provider,
+            attempt.model,
+            attempt.status,
+            attempt.error_code or "-",
+            attempt.latency_ms,
+            attempt.input_tokens,
+            attempt.output_tokens,
+            attempt.cost_usd if attempt.cost_usd is not None else "-",
+        )
     gen.repair_count = sum(a.task.value == "repair_specification" for a in attempts)
     gen.input_tokens = sum(a.input_tokens for a in attempts)
     gen.output_tokens = sum(a.output_tokens for a in attempts)
@@ -182,6 +197,8 @@ class BuildingGenerationService:
             await self.finish("failed", code=exc.code, message=exc.user_message)
             return
         except InterpretationError as exc:
+            if isinstance(exc.__cause__, AIProviderError):  # technical detail: server log only
+                logger.error("ai_generation id=%s provider error: %s", gen.id, exc.__cause__.detail)
             _record_attempts(self.session, gen, exc.attempts)
             await self.finish("failed", code=exc.code, message=exc.message, issues=exc.issues)
             return

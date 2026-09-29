@@ -58,10 +58,14 @@ class Settings(BaseSettings):
 
     # AI (docs/ai-pipeline.md). "mock" is the deterministic offline interpreter (development,
     # tests, CI); it is refused in production. Tests always use "mock".
-    ai_provider: Literal["mock", "anthropic"] = "mock"
-    ai_model: str | None = None  # e.g. claude-opus-5; required for real providers
+    ai_provider: Literal["mock", "anthropic", "openrouter"] = "mock"
+    ai_model: str | None = None  # anthropic: e.g. claude-opus-5 (required)
     anthropic_api_key: SecretStr | None = None  # backend only, never logged or sent to clients
     anthropic_base_url: str | None = None
+    # OpenRouter (OpenAI-compatible gateway): key and model, e.g. anthropic/claude-opus-5.5.
+    openrouter_api_key: SecretStr | None = None  # backend only, never logged or sent to clients
+    openrouter_model: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
     ai_effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     ai_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
     ai_max_retries: int = Field(default=1, ge=0, le=5)  # transient errors, inside the SDK
@@ -104,6 +108,14 @@ class Settings(BaseSettings):
                 raise ValueError("AI_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
             if not self.ai_model:
                 raise ValueError("AI_PROVIDER=anthropic requires AI_MODEL (e.g. claude-opus-5)")
+        if self.ai_provider == "openrouter":
+            if self.openrouter_api_key is None or not self.openrouter_api_key.get_secret_value():
+                raise ValueError("AI_PROVIDER=openrouter requires OPENROUTER_API_KEY")
+            if not self.openrouter_model:
+                raise ValueError(
+                    "AI_PROVIDER=openrouter requires OPENROUTER_MODEL "
+                    "(e.g. anthropic/claude-opus-5.5)"
+                )
         return self
 
     @property

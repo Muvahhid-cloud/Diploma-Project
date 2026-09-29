@@ -120,6 +120,7 @@ Delivered:
 | BuildingSpecification exists and is validated | ☑ spec 1.0.0 (unchanged) — Pydantic tier 1 + rules tier 2 + form fields |
 | AIProvider abstraction / MockAIProvider | ☑ |
 | AnthropicProvider with environment configuration | ☑ implemented and unit-tested against a fake SDK client; settings fail fast without key/model. ☐ **not live-tested** — no project Anthropic credentials configured (`tests/ai/test_live_anthropic.py`, `RUN_LIVE_AI_TESTS=true`) |
+| OpenRouterProvider (OpenAI-compatible adapter, 2026-09-29) | ☑ `AI_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`; unit-tested against a mocked HTTP transport. ☑ **live-tested once** with `anthropic/claude-opus-5.5`: strict structured outputs rejected the full schema ("compiled grammar is too large", free 400) → schema-in-prompt fallback; 1 call, no repair, 2 floors, 222.3 m² (asked 220), 3 bedrooms, 2 bathrooms, 1 WC, 2-car garage, no geometry or rules findings |
 | NL generation endpoint; schema validation; invalid output rejected/repaired | ☑ |
 | Spec passes building rules → layout engine → valid BuildingModel → version | ☑ demo prompt: 2 floors, 279.7 m² (asked 280), 4 bedrooms, 3 bathrooms, 2-car garage, balcony, all checks met, no rules findings |
 | Existing 3D engine displays it; rotate, zoom, select, floors, properties | ☑ verified in the browser (dev and production build) |
