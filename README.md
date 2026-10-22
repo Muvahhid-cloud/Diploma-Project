@@ -111,7 +111,6 @@ scripts/         Cross-platform helper scripts
 | [docs/3d-engine.md](docs/3d-engine.md) | Coordinates, units, geometry generation, selection, regeneration, performance |
 | [docs/database.md](docs/database.md) | PostgreSQL schema, versioning storage |
 | [docs/roadmap.md](docs/roadmap.md) | Phases, verification checklists, decisions log |
-| [CLAUDE.md](CLAUDE.md) | Permanent project rules for AI-assisted development |
 
 ## Disclaimer
 
