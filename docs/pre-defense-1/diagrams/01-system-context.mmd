@@ -1,0 +1,35 @@
+%% BuildAI 3D — System Context Diagram (C4 level 1 style)
+%% Source of truth for docs/pre-defense-1/07_architecture_and_diagrams.md §2.
+%% Solid = implemented on main (7685bf9). Dashed = planned, not implemented.
+flowchart TB
+    user["<b>Registered user</b><br/>homeowner, student,<br/>early-stage designer"]
+    guest["<b>Guest</b><br/>views the hand-authored<br/>demo house (no login)"]
+    operator["<b>Developer / operator</b><br/>configures environment,<br/>AI provider, rules data"]
+
+    subgraph boundary["BuildAI 3D (modular monolith)"]
+        system["<b>BuildAI 3D platform</b><br/>Web UI (Next.js + React Three Fiber)<br/>API (FastAPI) · deterministic layout engine<br/>validation · versioned project storage"]
+        db[("PostgreSQL 16<br/>users, projects,<br/>immutable versions,<br/>jobs, AI generations")]
+        files[/"Versioned data files<br/>rules profiles · knowledge packs<br/>material library · fixtures"/]
+    end
+
+    subgraph ext["External LLM providers (one selected by AI_PROVIDER)"]
+        openrouter["<b>OpenRouter API</b><br/>(OpenAI-compatible)<br/>model e.g. anthropic/claude-opus-5.5"]
+        anthropic["<b>Anthropic API</b><br/>(direct; implemented,<br/>not live-tested)"]
+    end
+    subgraph future["Planned integrations (not implemented)"]
+        ifc["IFC / BIM tools<br/>(planned export)"]
+        catalogs["Cost catalogs<br/>(planned, Phase 4)"]
+    end
+
+    user <-- "description / spec form  ⇄<br/>3D model, summary, assumptions,<br/>findings, history" --> system
+    guest -- "opens demo viewer" --> system
+    operator -- ".env configuration<br/>(AI_PROVIDER, keys, model)" --> system
+    system <--> db
+    system -- "reads" --> files
+    system <-- "prompt + JSON Schema ⇄<br/>SpecificationDraft JSON<br/>(intent only, no geometry)" --> openrouter
+    system -. "same contract" .-> anthropic
+    system -. "future export" .-> ifc
+    system -. "future input" .- catalogs
+
+    classDef planned stroke-dasharray: 5 5,color:#666,fill:#f6f6f6;
+    class ifc,catalogs planned;

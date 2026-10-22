@@ -1,0 +1,59 @@
+%% BuildAI 3D — Use Case Diagram
+%% Mermaid has no native UML use-case notation; actors are rectangles, use cases are
+%% stadium shapes inside the system boundary. Status prefix:
+%%   (no prefix) implemented on main · [K3 branch] committed, not merged · [Planned] not started
+flowchart LR
+    user["«actor»<br/>Registered user"]
+    guest["«actor»<br/>Guest"]
+    operator["«actor»<br/>Developer / operator"]
+    llm["«actor, external»<br/>LLM provider<br/>(OpenRouter / Anthropic)"]
+
+    subgraph sys["BuildAI 3D"]
+        direction TB
+        UC1(["Register / sign in"])
+        UC2(["Create project"])
+        UC3(["Describe building in natural language"])
+        UC4(["Answer clarification questions"])
+        UC5(["Enter / edit specification form<br/>(size, floors, rooms, style, seed)"])
+        UC6(["Generate 3D building model"])
+        UC7(["Inspect element properties"])
+        UC8(["Isolate floors, toggle layers,<br/>section cut, camera presets"])
+        UC9(["Review design report<br/>(assumptions, deviations,<br/>geometry + rules findings)"])
+        UC10(["View AI generation history"])
+        UC11(["Switch between immutable versions"])
+        UC12(["View hand-authored demo house"])
+        UC13(["Configure AI provider and model"])
+        UC14(["[K3 branch] Set facade color, window emphasis<br/>per facade, room orientation, design system"])
+        UC15(["[Planned] Modify design in natural language"])
+        UC16(["[Planned] Compare / restore versions"])
+        UC17(["[Planned] Quantities and preliminary cost"])
+        UC18(["[Planned] Export report / IFC"])
+    end
+
+    user --- UC1
+    user --- UC2
+    user --- UC3
+    user --- UC5
+    user --- UC7
+    user --- UC8
+    user --- UC9
+    user --- UC10
+    user --- UC11
+    user -.- UC14
+    user -.- UC15
+    user -.- UC16
+    user -.- UC17
+    user -.- UC18
+    UC12 --- guest
+    UC13 --- operator
+
+    UC3 -- "«include»" --> UC6
+    UC5 -- "«include»" --> UC6
+    UC4 -- "«extend» when request is too vague" --> UC3
+    UC3 --- llm
+    UC6 -- "«include» validation + layout" --> UC9
+
+    classDef planned stroke-dasharray: 5 5,color:#666,fill:#f6f6f6;
+    classDef branch stroke-dasharray: 2 2,fill:#fff8e1;
+    class UC15,UC16,UC17,UC18 planned;
+    class UC14 branch;
