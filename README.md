@@ -149,7 +149,6 @@ scripts/         Cross-platform helper scripts
 | [docs/knowledge.md](docs/knowledge.md) | Architectural knowledge packs, families/types/assemblies (Phase 3.5) |
 | [docs/roadmap.md](docs/roadmap.md) | Phases, verification checklists, decisions log |
 | [docs/pre-defense-1/](docs/pre-defense-1/README.md) | Pre-Defense 1 package (diploma assessment deliverables) |
-| [CLAUDE.md](CLAUDE.md) | Permanent project rules for AI-assisted development |
 
 ## Disclaimer
 
