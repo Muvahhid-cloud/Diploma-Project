@@ -1,6 +1,6 @@
 # 07 — Architecture and Diagrams
 
-> The diagrams show `main` @ `7830248` unless marked otherwise. Editable sources are Mermaid (`.mmd`). Exports are SVG (vector) and PNG (2× raster), rendered with Mermaid 11 in headless Chrome on 2026-10-20.
+> The diagrams show `main` @ `7685bf9` unless marked otherwise. Editable sources are Mermaid (`.mmd`). Exports are SVG (vector) and PNG (2× raster), rendered with Mermaid 11 in headless Chrome on 2026-10-20.
 > The detailed design documents remain the source of truth: [`docs/architecture.md`](../architecture.md), [`docs/building-model.md`](../building-model.md), [`docs/ai-pipeline.md`](../ai-pipeline.md), [`docs/3d-engine.md`](../3d-engine.md), [`docs/database.md`](../database.md). This document summarizes them for the pre-defense and doesn't replace them.
 
 | # | Diagram | Source | SVG | PNG |
@@ -79,7 +79,7 @@ Mermaid has no UML use-case notation, so actors are «actor» boxes and use case
 | Switch between immutable versions | Registered user | Implemented | screenshot 11 (version selector "v2 … / v1 …") |
 | View demo house | Guest | Implemented | screenshot 01 |
 | Configure AI provider and model | Operator | Implemented | `test_provider_selection.py` |
-| Facade color, window emphasis per facade, room orientation, design system | Registered user | **K3 branch, not merged** | branch commit `cc59d3f` |
+| Facade color, window emphasis per facade, room orientation, design system | Registered user | **K3 branch, not merged** | branch commit `3fbd3c4` |
 | Modify design in NL; compare/restore; quantities and cost; export | Registered user | Planned | `docs/roadmap.md` Phases 4, 5, 7 and backlog |
 
 ## 4. Diagram 3 — Component diagram (draft)
@@ -130,5 +130,5 @@ The K3 branch adds `building/design.py` (deterministic precedence), `building/fa
 
 None were needed for this package. Two **inconsistencies were found and left for the team** to fix, so this sprint doesn't touch files the K3 branch also edits (to avoid merge conflicts):
 
-1. `docs/roadmap.md` (main) marks K2 as "branch, awaiting review", but K2 (`9d94bb0`) is in `main`'s history.
+1. `docs/roadmap.md` (main) marks K2 as "branch, awaiting review", but K2 (`b0ce43f`) is in `main`'s history.
 2. `docs/architecture.md` §2 still draws MEP, quantities, costing and AI analysis in the end-to-end pipeline without marking them planned. §2 also says "max 2 repairs", while the configured default is 1 (`AI_MAX_REPAIRS`, allowed 0–2).

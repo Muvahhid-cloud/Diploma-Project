@@ -5,12 +5,12 @@
 
 | Item | Observed |
 |---|---|
-| Remote | **None** (`git remote -v` is empty). CI (`.github/workflows/ci.yml`) has therefore never run |
-| `main` | `7830248`: Phases 0–3, K1, K2, K2.5, OpenRouter provider, schema-in-prompt fallback |
-| Unmerged feature branch | `phase-3.5-k3-design-systems` @ `cc59d3f` (one commit ahead of `main`; 88 files, +11,745 / −288). Awaiting review; **not merged by this sprint** |
+| Remote | `origin` = <https://github.com/Muvahhid-cloud/Diploma-Project> (pushed 2026-10-22: `main`, `phase-3.5-k3-design-systems`, `docs/pre-defense-1`). CI (`.github/workflows/ci.yml`) not yet checked on GitHub |
+| `main` | `7685bf9`: Phases 0–3, K1, K2, K2.5, OpenRouter provider, schema-in-prompt fallback |
+| Unmerged feature branch | `phase-3.5-k3-design-systems` @ `3fbd3c4` (one commit ahead of `main`; 88 files, +11,745 / −288). Awaiting review; **not merged by this sprint** |
 | Other local branches | `phase-2-layout-engine`, `phase-3-ai-generation`, `phase-3-anthropic-schema-fallback`, `phase-3-openrouter-provider`, `phase-3.5-k1-knowledge`, `phase-3.5-k2-types-assemblies`, `phase-3.5-k2.5-geometry`. All are ancestors of `main` (already merged) and kept untouched |
-| This sprint's branch | `docs/pre-defense-1`, created from `main`. Changes are documentation only (`docs/pre-defense-1/`, `README.md`) and **uncommitted**, left for team review |
-| Commit history | 14 commits, 2026-09-27 → 2026-09-29, **all authored by one Git identity** ("Zayniddin"). Commits carry a `Co-Authored-By: Claude …` trailer, i.e. AI-assisted development |
+| This sprint's branch | `docs/pre-defense-1`, created from `main`. Changes are documentation only (`docs/pre-defense-1/`, `README.md`), committed and pushed for team review |
+| Commit history | 14 commits, 2026-09-27 → 2026-09-29, **all authored by one Git identity** ("Zayniddin"). Development was AI-assisted (Claude Code), to be disclosed in the thesis; commit messages were rewritten once on 2026-10-22 to remove the AI co-author trailer, at the supervisor's request; file contents, authors and dates unchanged |
 | Secrets | `.env` exists locally and is git-ignored (`.gitignore`: `.env`, `.env.*`, `!.env.example`); `.localdb/` ignored. `git ls-files` shows no `.env` |
 | Tags | None. The pre-defense tag is **not** created until the package is reviewed (§8) |
 
@@ -58,8 +58,8 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed. S1 = Турсун
 | R-01 | User interviews aren't completed by 2026-10-24 | High | High (assessment component) | Recruit immediately (§7 day 1); accept 3 interviews as the minimum; use video calls | S2 [TO CONFIRM] | Open |
 | R-02 | Supervisor not confirmed, so no feedback before submission | Medium | High | Contact the department on day 1; log every contact in [11](11_supervisor_feedback.md) | S1 [TO CONFIRM] | Open |
 | R-03 | No Git remote: committee can't access the code; CI never run | High (current state) | High | Follow §6 on day 1 once the URL and access are decided | S2 [TO CONFIRM] | Open |
-| R-04 | Contribution evidence: all commits so far come from one Git identity, so the second student's contribution isn't visible | High | High (individual assessment) | From now on each student commits from their **own** account; record pairing or reviews in PR descriptions and YouTrack; **never** rewrite or backdate history | Both | Open |
-| R-05 | AI-assisted development (Claude co-authored commits) not disclosed according to university policy | Medium | High (academic integrity) | Check the university AI-use policy; disclose tool use in the thesis and to the supervisor; both students must be able to explain every module | Both | Open |
+| R-04 | Contribution evidence: all commits so far come from one Git identity, so the second student's contribution isn't visible | High | High (individual assessment) | From now on each student commits from their **own** account; record pairing or reviews in PR descriptions and YouTrack; **never** backdate history or rewrite it again (only change so far: removal of the AI co-author trailer on 2026-10-22, at the supervisor's request) | Both | Open |
+| R-05 | AI-assisted development not disclosed according to university policy | Medium | High (academic integrity) | Check the university AI-use policy; disclose tool use in the thesis and to the supervisor; both students must be able to explain every module | Both | Open |
 | R-06 | Unverified or misdescribed literature claims | Low (all metadata verified) | Medium | Both students read full texts (LIT-03); correct the abstract-level summaries | S2 | Open |
 | R-07 | Hand-written auth has a security flaw | Low–Medium | High if deployed | Tests already cover rotation and reuse; do a security review before any deployment (SEC-01) | S2 | Open |
 | R-08 | Secret leak when the remote is created (`.env` holds a real OpenRouter key) | Low | High | `.env` is git-ignored (verified); run `git ls-files | grep -i env` and a secret scan before the first push; rotate the key if it is ever exposed | S1 | Open |

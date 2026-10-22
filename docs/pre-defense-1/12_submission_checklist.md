@@ -22,15 +22,15 @@
 
 | Requirement | Status | Evidence / action |
 |---|---|---|
-| One repository used throughout the diploma (same project) | ✔ Completed | Local Git history since 2026-09-27 (14 commits); nothing reset or deleted |
-| Remote repository (GitHub/GitLab) exists | in proccess |  host and URL will be  provided (10_project_management_and_risks.md) §6 (REP-01) |
+| One repository used throughout the diploma (same project) | ✔ Completed | Git history since 2026-09-27 (14 commits + docs commit); no branch reset or deleted; commit messages were rewritten once on 2026-10-22 to remove the AI co-author trailer, at the supervisor's request; file contents, authors and dates unchanged |
+| Remote repository (GitHub/GitLab) exists | ✔ Completed | <https://github.com/Muvahhid-cloud/Diploma-Project>: `main`, `phase-3.5-k3-design-systems`, `docs/pre-defense-1` pushed 2026-10-22 |
 | Access for both students, supervisor, committee | approved | Depends on the remote and account names |
 | README with project title, team, description, setup, status | ◐ Draft ready | Root [README.md](../../README.md) updated in this sprint |
-| Pre-defense documentation in the repository | ◐ Draft ready | `docs/pre-defense-1/` (uncommitted on branch `docs/pre-defense-1`) |
-| Build / tests pass on the submitted commit | ✔ Completed for `main` @ `7830248` |  web 135 passed; API 582 passed, 2 skipped; lint and typecheck clean. Re-run on the final commit before tagging |
-| CI runs on the remote | ☐ Not started | Needs the remote; workflow file exists |
+| Pre-defense documentation in the repository | ◐ Draft ready | `docs/pre-defense-1/` (committed on branch `docs/pre-defense-1`, pushed to GitHub) |
+| Build / tests pass on the submitted commit | ✔ Completed for `main` @ `7685bf9` |  web 135 passed; API 582 passed, 2 skipped; lint and typecheck clean. Re-run on the final commit before tagging |
+| CI runs on the remote | ☐ Not started | Remote exists; check the GitHub Actions run on `main` |
 | No secrets or personal data committed | ✔ Completed (current history) | `.env` git-ignored and untracked; screenshots use a throwaway test account; no interview data in Git. Repeat the scan before pushing (SEC-02) |
-| Contributions from each student's own account | In proccess  | All existing commits come from one identity; future commits must come from each student's own account. No history rewriting (R-04) |
+| Contributions from each student's own account | In proccess  | All existing commits come from one identity; future commits must come from each student's own account. No further history rewriting (R-04) |
 | YouTrack (or tracker) with tasks | In proccess | Import file ready; no instance or project yet |
 | Pre-defense tag | In proccess| Create `pre-defense-1` only after review: `git tag -a pre-defense-1 -m "Pre-defense 1 submission"` then `git push origin pre-defense-1` |
 | K3 branch status clearly stated | ✔ Completed | Documented everywhere as "committed, not merged" |

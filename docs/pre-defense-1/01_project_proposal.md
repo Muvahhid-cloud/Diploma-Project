@@ -87,19 +87,19 @@ Design, implement and evaluate a web platform that turns a natural-language desc
 
 ## 10. Current project status (verified 2026-10-20)
 
-Git: local repository with **no remote configured**. `main` = `7830248`. 14 commits from 2026-09-27 to 2026-09-29. Full detail in [10](10_project_management_and_risks.md) §1.
+Git: remote `origin` = GitHub `Muvahhid-cloud/Diploma-Project` (pushed 2026-10-22). `main` = `7685bf9`. 14 commits from 2026-09-27 to 2026-09-29. Full detail in [10](10_project_management_and_risks.md) §1.
 
 | Milestone | Status | Evidence |
 |---|---|---|
-| Phase 0 — foundations (monorepo, auth, projects, CI file) | Implemented (main). Docker Compose **not verified** (no Docker on dev machine). CI **never run** (no remote) | `docs/roadmap.md` Phase 0 checklist |
+| Phase 0 — foundations (monorepo, auth, projects, CI file) | Implemented (main). Docker Compose **not verified** (no Docker on dev machine). CI **not yet checked** on GitHub | `docs/roadmap.md` Phase 0 checklist |
 | Phase 1 — hand-authored model → procedural 3D | Implemented (main) | Roadmap checklist; screenshot `assets/screenshots/01-demo-house-viewer.png` |
 | Phase 2 — `BuildingSpecification` + deterministic layout engine | Implemented (main) | 10 reference specs + golden files; Hypothesis tests |
 | Phase 3 — AI building generation | Implemented (main). `AnthropicProvider` unit-tested only (never called live) | Roadmap Phase 3 checklist |
-| OpenRouter provider (Claude Opus 5.5) + schema-in-prompt fallback | Implemented (main). **Live-tested once** (single call, recorded in `docs/roadmap.md`) | Commits `5b18975`, `7830248` |
-| Phase 3.5 K1 — knowledge foundation | Implemented (main) | `bcfb278` |
-| Phase 3.5 K2 — families, types, assemblies (BuildingModel 1.1.0) | Implemented (main). Records stay `draft` pending human review | `9d94bb0` (`docs/roadmap.md` still says "branch, awaiting review" for K2, which is out of date) |
-| Phase 3.5 K2.5 — geometry and placement validation (`layout@1.2.0`) | Implemented (main) | `77fea02` |
-| Phase 3.5 K3 — design systems + expressive design intent (`layout@1.3.0`, spec 1.1.0, model 1.2.0) | **Committed, not merged**: branch `phase-3.5-k3-design-systems` (`cc59d3f`), awaiting review. Its tests were **not re-run** on 2026-10-20 | Commit message and branch roadmap; one live OpenRouter call recorded there |
+| OpenRouter provider (Claude Opus 5.5) + schema-in-prompt fallback | Implemented (main). **Live-tested once** (single call, recorded in `docs/roadmap.md`) | Commits `f9b02ef`, `7685bf9` |
+| Phase 3.5 K1 — knowledge foundation | Implemented (main) | `9d10661` |
+| Phase 3.5 K2 — families, types, assemblies (BuildingModel 1.1.0) | Implemented (main). Records stay `draft` pending human review | `b0ce43f` (`docs/roadmap.md` still says "branch, awaiting review" for K2, which is out of date) |
+| Phase 3.5 K2.5 — geometry and placement validation (`layout@1.2.0`) | Implemented (main) | `28fb2bb` |
+| Phase 3.5 K3 — design systems + expressive design intent (`layout@1.3.0`, spec 1.1.0, model 1.2.0) | **Committed, not merged**: branch `phase-3.5-k3-design-systems` (`3fbd3c4`), awaiting review. Its tests were **not re-run** on 2026-10-20 | Commit message and branch roadmap; one live OpenRouter call recorded there |
 | K4–K6, Phase 4 (quantities/cost) … Phase 8 | Not started | `docs/roadmap.md` |
 
 **Automated checks re-run on `main` on 2026-10-20 (this sprint):** web Vitest **135 passed** (23 files). API pytest **582 passed, 2 skipped** (the two live-provider tests, skipped by design). `pnpm lint` clean (ESLint, ruff, ruff format, import-linter **5 contracts kept**). `pnpm typecheck` clean (tsc, mypy: "no issues found in 182 source files").

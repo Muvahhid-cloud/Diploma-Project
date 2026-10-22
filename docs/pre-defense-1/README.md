@@ -2,7 +2,7 @@
 
 Team SE-2406 · Турсуналиев Зайниддин Хайдаралиевич, Усманов Эсанжон Амонджонович · Supervisor: Танырбергенова Камила Ислямовна · Deadline 2026-10-24
 
-The package describes `main` @ `7830248`. The K3 design-systems work sits on the unmerged branch `phase-3.5-k3-design-systems` and is labelled that way throughout. Status at a glance: [12_submission_checklist.md](12_submission_checklist.md).
+The package describes `main` @ `7685bf9`. The K3 design-systems work sits on the unmerged branch `phase-3.5-k3-design-systems` and is labelled that way throughout. Status at a glance: [12_submission_checklist.md](12_submission_checklist.md).
 
 | # | Document | Assessment component |
 |---|---|---|

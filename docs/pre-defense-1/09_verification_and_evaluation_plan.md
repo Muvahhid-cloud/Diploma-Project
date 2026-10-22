@@ -13,7 +13,7 @@
 | A5 | Property-based invariants (Hypothesis): random specs give no model errors, all rooms reachable, program present, reproducible | Part of A2; roadmap Phase 2 records 40 random specs | Pass | Automated |
 | A6 | Determinism across two `PYTHONHASHSEED`s | Part of A2 (`layout/test_engine.py`) | Pass | Automated |
 | A7 | Live OpenRouter call #1 (`anthropic/claude-opus-5.5`), main | Recorded in `docs/roadmap.md`, 2026-09-29 | Strict schema rejected ("compiled grammar is too large") → schema-in-prompt fallback; 1 call, no repair; 2 floors, 222.3 m² (asked 220), 3 bed, 2 bath, 1 WC, 2-car garage; no geometry or rules findings | **Single observation** (n = 1) |
-| A8 | Live OpenRouter call #2, K3 branch | Recorded in branch commit `cc59d3f`, 2026-09-29 | Yellow facade on all 11 exterior walls; 3 panoramic windows all on the rear; front standard only; living + dining on the rear; no findings; no repair | Single observation, **branch only** |
+| A8 | Live OpenRouter call #2, K3 branch | Recorded in branch commit `3fbd3c4`, 2026-09-29 | Yellow facade on all 11 exterior walls; 3 panoramic windows all on the rear; front standard only; living + dining on the rear; no findings; no repair | Single observation, **branch only** |
 | A9 | Mock end-to-end generation duration | Screenshot 09, 2026-10-20 | 1.3 s | Single observation |
 | A10 | Viewer scene build for the generated 280 m² house | Screenshots 05–06 status line, dev mode | 117 elements, 144 meshes, ~7k triangles, built in 39–40 ms | Single observation |
 | A11 | Browser E2E walkthroughs | `docs/roadmap.md` Phases 0–3 checklists; screenshots 01–12 | Pass | Manual |

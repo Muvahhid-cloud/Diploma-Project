@@ -1,6 +1,6 @@
 # 08 — UX and Prototype
 
-> **All screenshots below are genuine captures of the running application** (branch `main` @ `7830248`). They were taken on 2026-10-20 with headless Chrome at 1440×900, against a local API and embedded PostgreSQL.
+> **All screenshots below are genuine captures of the running application** (branch `main` @ `7685bf9`). They were taken on 2026-10-20 with headless Chrome at 1440×900, against a local API and embedded PostgreSQL.
 > **Capture conditions:** `AI_PROVIDER=mock` (the deterministic offline interpreter). The UI labels this "Offline mock interpreter (development mode)" and "mock interpreter", so **no real LLM output is shown in these images**. A throwaway local test account was used (display name "Pre-defense Demo"); it holds no personal data. The only change to the page was hiding the Next.js dev-mode indicator badge with CSS.
 > **No mockups are presented as implemented features.**
 
