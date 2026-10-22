@@ -1,0 +1,67 @@
+%% BuildAI 3D — Component Diagram (DRAFT)
+%% Reflects main @ 7830248. Dashed boxes are empty/planned packages (no implementation yet).
+%% Arrows show the generation flow and dependencies; the LLM never reaches geometry.
+flowchart TB
+    subgraph web["apps/web — Next.js (App Router), TypeScript"]
+        direction TB
+        features["features/*<br/>projects · ai · generation<br/>editor · versions · auth"]
+        stores["stores (Zustand)<br/>building · selection · layers · viewer"]
+        apiclient["lib API client<br/>+ TanStack Query"]
+        schemaTS["packages/schema (generated)<br/>TS types + Zod validators"]
+        engine["engine/ (pure TS)<br/>builders · mesh-builder · scene<br/>materials · coords"]
+        viewer["viewer/ (React Three Fiber)<br/>ModelRoot (Z-up → Y-up) · CameraRig<br/>ElementMesh · SectionPlane"]
+        features --> stores
+        features --> apiclient
+        apiclient --> schemaTS
+        stores --> engine
+        engine --> viewer
+    end
+
+    subgraph api["apps/api — FastAPI modular monolith, Python 3.12"]
+        direction TB
+        routers["HTTP routers /api/v1<br/>auth · projects · versions · jobs<br/>generation · ai · demo · health"]
+        subgraph aimod["modules/ai (adapter layer)"]
+            orchestrator["orchestrator / service<br/>stages, rate limit, history"]
+            interpreter["interpreter<br/>Pydantic → rules.spec_checks →<br/>form fields; ≤ 1 repair call"]
+            prompts["prompts (versioned)<br/>vocabulary from enums,<br/>numbers from rules profile"]
+            providers["providers<br/>MockAIProvider · AnthropicProvider<br/>OpenRouterProvider"]
+            orchestrator --> interpreter --> providers
+            interpreter --> prompts
+        end
+        pipeline["generation.pipeline<br/>layout_and_save (shared by AI and spec form)"]
+        subgraph domain["Pure domain (no FastAPI / SQLAlchemy / AI imports — import-linter)"]
+            direction TB
+            building["building<br/>BuildingSpecification · BuildingModel<br/>validation · geometry_checks · constraints<br/>hosting · axes · migrations (upgrade-on-read)"]
+            rules["rules<br/>BuildingRulesProfile · spec_checks<br/>model_checks · type_checks"]
+            layout["layout engine<br/>generate_layout(spec, profile, seed)<br/>seeded search · deterministic"]
+            catalog["catalog<br/>knowledge packs · families/types<br/>assemblies · gated resolver"]
+            q["quantities (planned)"]
+            c["costing (planned)"]
+            m["mep (planned)"]
+        end
+        repos["repositories (SQLAlchemy 2, async)"]
+        routers --> orchestrator
+        routers --> pipeline
+        orchestrator --> pipeline
+        pipeline --> rules
+        pipeline --> layout
+        pipeline --> catalog
+        pipeline --> building
+        layout --> building
+        layout --> rules
+        routers --> repos
+        pipeline --> repos
+    end
+
+    db[("PostgreSQL 16<br/>users · refresh_tokens · projects<br/>project_versions (JSONB model) · jobs<br/>ai_generations · ai_runs")]
+    data[/"data/<br/>rules-profiles · knowledge · materials · fixtures"/]
+    llm["External LLM API<br/>OpenRouter / Anthropic"]
+
+    apiclient -- "HTTPS JSON (snake_case),<br/>JWT access + refresh cookie" --> routers
+    repos --> db
+    rules --> data
+    catalog --> data
+    providers -- "structured output request" --> llm
+
+    classDef planned stroke-dasharray: 5 5,color:#666,fill:#f6f6f6;
+    class q,c,m planned;

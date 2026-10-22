@@ -1,0 +1,22 @@
+Summary,Description,Type,Priority,Assignee,Due Date,Tags,Subsystem
+"DOC-01 Team review of the pre-defense package","Both students review docs/pre-defense-1 for accuracy against the code and agree on changes.",Task,Critical,,2026-10-21,pre-defense-1,documentation
+"DOC-02 Fix stale roadmap/architecture statements","roadmap.md marks K2 as branch-only although it is on main; architecture.md section 2 draws planned stages (MEP, quantities, costing) as if implemented. Do after the K3 merge decision to avoid conflicts.",Task,Normal,,,pre-defense-1,documentation
+"LIT-01 Extend literature search with documented query","Run and document a Scopus/Web of Science query (keywords, date range, counts, inclusion) and add verified sources to references.md.",Task,Normal,,,pre-defense-1,literature
+"LIT-03 Read full texts and correct summaries","Read S12 and S15-S19 in full and correct any abstract-level summary in 03_literature_review.md.",Task,Major,,2026-10-22,pre-defense-1,literature
+"INT-01 Recruit 5 interview participants","At least 3 categories from 02_relevance_and_user_evidence.md section 3. No personal data in the repository.",Task,Critical,,2026-10-21,pre-defense-1,interviews
+"INT-02 Confirm consent form requirement","Ask the supervisor/department whether a university consent form is required.",Task,Major,,2026-10-21,pre-defense-1,interviews
+"INT-03 Conduct and log interviews P01-P05","Follow the protocol; anonymized log in section 6; raw notes outside Git.",Task,Critical,,2026-10-23,pre-defense-1,interviews
+"INT-04 Analyze interview findings","Fill section 7 tables; mark hypotheses H1-H7; update requirement priorities in 06.",Task,Critical,,2026-10-23,pre-defense-1,interviews
+"REQ-01 Re-validate requirement statuses","Update FR-14/FR-15 and counts after the K3 merge decision; re-run tests.",Task,Normal,,,pre-defense-1,requirements
+"DIA-01 Strict UML use-case diagram if required","Redraw diagrams/02-use-case.mmd content in UML notation if the university template requires it.",Task,Minor,,,pre-defense-1,diagrams
+"PRO-01 Live-LLM screenshot and cost","One OpenRouter generation; capture summary and history; record tokens and cost.",Task,Normal,,2026-10-23,pre-defense-1,prototype
+"PRO-02 K3 screenshots from branch","Run phase-3.5-k3-design-systems; capture design section, facade color, facade windows; label as branch-only.",Task,Minor,,,pre-defense-1,prototype
+"TST-01 Eval harness and frozen prompt set","Implement pnpm eval and data/fixtures/eval/prompts.v1.json per 09 section B2-B7.",Feature,Major,,,evaluation,testing
+"TST-02 Run mock baseline and live evaluation","Budget-capped; 3 repetitions for live; publish CSV and summary table.",Task,Major,,,evaluation,testing
+"TST-03 Verify Docker Compose","Run docker compose up --build on a machine with Docker; record the result in roadmap Phase 0.",Task,Normal,,,pre-defense-1,testing
+"SEC-01 Security review","Review auth (JWT, refresh rotation, cookies), secrets handling, rate limits, error messages.",Task,Major,,,security,security
+"SEC-02 Secret scan before first push","git ls-files check plus a secret scanner; confirm .env is not tracked.",Task,Critical,,2026-10-21,pre-defense-1,security
+"REP-01 Create remote and grant access","Empty private repo; push all branches unchanged; access for both students, supervisor, committee; protect main.",Task,Critical,,2026-10-21,pre-defense-1,repository
+"SUP-01 Confirm supervisor and send package","Record the supervisor name in README and 01; send the package link.",Task,Critical,,2026-10-21,pre-defense-1,supervisor
+"SUP-02 Supervisor review meeting","Hold the meeting; log comments and agreed actions in 11_supervisor_feedback.md.",Task,Critical,,2026-10-23,pre-defense-1,supervisor
+"K3-01 Review K3 branch and decide on merge","Code review of phase-3.5-k3-design-systems; pnpm check must pass; merge through a reviewed PR.",Task,Major,,,development,development

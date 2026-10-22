@@ -1,22 +1,58 @@
 # BuildAI 3D
 
-AI-powered residential building design. Describe a house in plain language; get an editable, procedural 3D building with material quantities and a preliminary construction cost.
+AI-assisted residential building design. Describe a house in plain language and get a validated, element-level, procedural 3D building model. Material quantities and a preliminary construction cost are **planned** (Phase 4) and not implemented yet.
 
 > "Create a modern two-story house with 280 m², 4 bedrooms, 3 bathrooms, a large open kitchen and living room, a two-car garage, balcony, panoramic windows and minimalist design."
 
 ```
-Natural language → AI → BuildingSpecification → Validation → Layout engine
-  → BuildingModel (walls, rooms, windows, pipes… as typed objects)
-  → Procedural 3D (Three.js / React Three Fiber) → Quantities → Cost → AI analysis
+Implemented:  Natural language → AI → BuildingSpecification → Validation → Layout engine
+                → BuildingModel (walls, rooms, doors, windows, slabs, stairs, roofs… as typed objects)
+                → Geometric validation → Procedural 3D (Three.js / React Three Fiber)
+Planned:      → Quantities → Cost → MEP → AI analysis → Reports / IFC export
 ```
 
-The AI produces **structured building data**, not images. A deterministic engine turns that data into geometry, so every wall, room, window and pipe is a real, selectable, measurable object.
+The AI produces **structured building data**, not images or geometry. A deterministic engine turns that data into geometry, so every wall, room, door and window is a real, selectable object with its own properties.
 
-Initial market: **Kazakhstan (KZT)**. Costing is currency-agnostic.
+Initial market: **Kazakhstan (KZT)**. Costing (planned) is currency-agnostic.
+
+## Project information (diploma)
+
+| | |
+|---|---|
+| Title (EN) | Development and Implementation of an Intelligent BIM-Based 3D Platform for AI-Assisted Generative Building Design |
+| Title (RU) | «Разработка и внедрение интеллектуальной BIM-ориентированной 3D-платформы BuildAI 3D для генеративного проектирования зданий с применением искусственного интеллекта» |
+| Team | SE-2406 |
+| Students | Турсуналиев Зайниддин Хайдаралиевич · Усманов Эсанжон Амонджонович |
+| Supervisor | Танырбергенова Камила Ислямовна |
+| Pre-defense documentation | [docs/pre-defense-1/](docs/pre-defense-1/README.md) (proposal, user-evidence protocol, literature review, comparisons, requirements, diagrams, UX evidence, evaluation plan, risks, checklist) |
+| Repository remote / issue tracker | Not configured yet (see [docs/pre-defense-1/10_project_management_and_risks.md](docs/pre-defense-1/10_project_management_and_risks.md) §6) |
+
+BuildAI 3D is an early-stage conceptual design and visualization prototype. It doesn't produce construction-ready or professionally certified designs (see [Disclaimer](#disclaimer)).
+
+### Implementation status (verified 2026-10-20)
+
+| Scope | Status |
+|---|---|
+| Phase 0–3: foundations, procedural 3D viewer, deterministic layout engine, AI generation (mock, Anthropic, OpenRouter providers) | Implemented on `main` |
+| Phase 3.5 K1 knowledge foundation · K2 families/types/assemblies · K2.5 geometric & placement validation | Implemented on `main` |
+| Phase 3.5 K3 design systems + expressive design intent (facade color, facade-specific windows, room orientation) | Committed on branch `phase-3.5-k3-design-systems`, **not merged** (awaiting review) |
+| Evaluation suite, quantities and cost, NL modification, version compare, MEP, reports, IFC export | Planned / not started |
+
+Checks on `main` (2026-10-20): web 135 tests passed; API 582 passed, 2 skipped (live-provider tests); lint and typecheck clean. The Anthropic provider has never been called live, and the OpenRouter provider was live-tested once. Docker Compose and CI haven't been verified (no Docker on the dev machine, no remote).
+
+## Screenshots
+
+Real captures of the running app (`main`, offline mock AI provider, 2026-10-20). More are in [docs/pre-defense-1/08_ux_prototype.md](docs/pre-defense-1/08_ux_prototype.md).
+
+| Describe a building in plain language | Generated 3D building with requested-vs-generated summary |
+|---|---|
+| ![AI generator on the projects dashboard](docs/pre-defense-1/assets/screenshots/02-projects-dashboard-ai-generator.png) | ![Generated two-storey house with generation summary](docs/pre-defense-1/assets/screenshots/05-generated-model-summary.png) |
+| **Select an element and inspect its properties** | **Design report: assumptions, geometry and rules checks** |
+| ![Selected panoramic window with its properties and host wall](docs/pre-defense-1/assets/screenshots/06-element-selected-properties.png) | ![Design report panel](docs/pre-defense-1/assets/screenshots/08-design-report.png) |
 
 ## Status
 
-**Phase 3 complete — AI building generation.** Sign in, describe a house in plain language on the projects page (or in a project's "New design" drawer) and press **Generate 3D building**. The AI turns the description into a validated `BuildingSpecification` (asking for clarification when the request is too vague), the deterministic layout engine plans rooms, corridors, stairs, walls, doors, windows, slabs, roof, balconies, garage and furniture, and the result opens as a new immutable version in the 3D editor — with a summary of what was requested vs. generated, every warning and every assumption. Each generation is kept in the project's history.
+**Phase 3 complete: AI building generation** (followed on `main` by Phase 3.5 K1–K2.5, see above). Sign in, describe a house in plain language on the projects page (or in a project's "New design" drawer) and press **Generate 3D building**. The AI turns the description into a validated `BuildingSpecification` (asking for clarification when the request is too vague), the deterministic layout engine plans rooms, corridors, stairs, walls, doors, windows, slabs, roof, balconies, garage and furniture, and the result opens as a new immutable version in the 3D editor — with a summary of what was requested vs. generated, every warning and every assumption. Each generation is kept in the project's history.
 
 The AI runs server-side only. `AI_PROVIDER=mock` (default for development, tests and CI) uses a deterministic offline interpreter; `AI_PROVIDER=anthropic` uses Claude:
 
@@ -110,7 +146,9 @@ scripts/         Cross-platform helper scripts
 | [docs/ai-pipeline.md](docs/ai-pipeline.md) | AI providers (mock, Anthropic), prompts, validation + repair, generation API, persistence, limitations |
 | [docs/3d-engine.md](docs/3d-engine.md) | Coordinates, units, geometry generation, selection, regeneration, performance |
 | [docs/database.md](docs/database.md) | PostgreSQL schema, versioning storage |
+| [docs/knowledge.md](docs/knowledge.md) | Architectural knowledge packs, families/types/assemblies (Phase 3.5) |
 | [docs/roadmap.md](docs/roadmap.md) | Phases, verification checklists, decisions log |
+| [docs/pre-defense-1/](docs/pre-defense-1/README.md) | Pre-Defense 1 package (diploma assessment deliverables) |
 | [CLAUDE.md](CLAUDE.md) | Permanent project rules for AI-assisted development |
 
 ## Disclaimer
