@@ -40,3 +40,7 @@ Thumbs.db
 
 # Embedded local PostgreSQL (pnpm db:local)
 .localdb/
+
+# Local AI-assistant configuration (kept out of the repository)
+CLAUDE.md
+.claude/
