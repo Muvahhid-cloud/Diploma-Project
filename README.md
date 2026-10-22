@@ -42,7 +42,7 @@ Checks on `main` (2026-10-20): web 135 tests passed; API 582 passed, 2 skipped (
 
 ## Screenshots
 
-Real captures of the running app (`main`, offline mock AI provider, 2026-10-20). More are in [docs/pre-defense-1/08_ux_prototype.md](docs/pre-defense-1/08_ux_prototype.md).
+Real captures of the running app (`main`, offline mock AI provider,). More are in [docs/pre-defense-1/08_ux_prototype.md](docs/pre-defense-1/08_ux_prototype.md).
 
 | Describe a building in plain language | Generated 3D building with requested-vs-generated summary |
 |---|---|
