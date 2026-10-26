@@ -35,7 +35,7 @@ BuildAI 3D is an early-stage conceptual design and visualization prototype. It d
 |---|---|
 | Phase 0–3: foundations, procedural 3D viewer, deterministic layout engine, AI generation (mock, Anthropic, OpenRouter providers) | Implemented on `main` |
 | Phase 3.5 K1 knowledge foundation · K2 families/types/assemblies · K2.5 geometric & placement validation | Implemented on `main` |
-| Phase 3.5 K3 design systems + expressive design intent (facade color, facade-specific windows, room orientation) | Committed on branch `phase-3.5-k3-design-systems`, **not merged** (awaiting review) |
+| Phase 3.5 K3 design systems + expressive design intent (facade color, facade-specific windows, room orientation) | Merged into `main` 2026-10-26 (design systems remain editorial drafts) |
 | Evaluation suite, quantities and cost, NL modification, version compare, MEP, reports, IFC export | Planned / not started |
 
 Checks on `main` (2026-10-20): web 135 tests passed; API 582 passed, 2 skipped (live-provider tests); lint and typecheck clean. The Anthropic provider has never been called live, and the OpenRouter provider was live-tested once. Docker Compose and CI haven't been verified (no Docker on the dev machine, no remote).

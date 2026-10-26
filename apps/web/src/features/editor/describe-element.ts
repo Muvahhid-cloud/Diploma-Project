@@ -42,7 +42,62 @@ const LABELS: Record<string, string> = {
   asset_id: "3D asset",
   load_bearing: "Load-bearing",
   ceiling_assembly_ref: "Ceiling assembly",
+  finish_left_color: "Left face display color",
+  finish_right_color: "Right face display color",
+  size_class: "Size class",
 };
+
+/**
+ * Semantic facade of an exterior wall from its outward normal (mirrors
+ * apps/api/app/modules/building/facades.py): the street is on the model's -y side.
+ */
+export function facadeOfWall(el: BuildingElement): string | null {
+  if (el.type !== "wall" || el.properties.wall_kind !== "exterior") return null;
+  const nx = Math.sin(el.rotation.z);
+  const ny = -Math.cos(el.rotation.z);
+  if (Math.abs(ny) >= Math.abs(nx)) return ny < 0 ? "front" : "rear";
+  return nx < 0 ? "left" : "right";
+}
+
+function hostWall(el: BuildingElement, index: ModelIndex): BuildingElement | undefined {
+  const rel = el.relationships.find((r) => r.kind === "hosted_by");
+  return rel ? index.elementsById.get(rel.target_id) : undefined;
+}
+
+/** Facade, display color, size class and design system of an element (K3). */
+export function designSection(el: BuildingElement, index: ModelIndex): PropertySection[] {
+  const rows: PropertyRow[] = [];
+  const wall =
+    el.type === "wall"
+      ? el
+      : el.type === "window" || el.type === "door"
+        ? hostWall(el, index)
+        : undefined;
+  const facade = wall ? facadeOfWall(wall) : null;
+  if (facade) rows.push({ label: "Facade", value: humanize(facade) });
+  if (el.type === "wall" && el.properties.finish_right_color && facade) {
+    const design = index.model.design?.facade_color;
+    rows.push({
+      label: "Facade color",
+      value: `${design?.name ? humanize(design.name) + " · " : ""}${el.properties.finish_right_color}${
+        design
+          ? ` (${design.source === "user" ? "your requirement" : "design-system default"})`
+          : ""
+      }`,
+    });
+  }
+  if (el.type === "window" && el.properties.size_class) {
+    rows.push({ label: "Size class", value: humanize(el.properties.size_class) });
+  }
+  const system = index.model.design?.design_system;
+  if (rows.length > 0 || system) {
+    rows.push({
+      label: "Design system",
+      value: system ? `${system.name} (${system.source})` : "None (generic)",
+    });
+  }
+  return rows.length > 0 ? [{ title: "Design", rows }] : [];
+}
 
 export function humanize(value: string): string {
   const s = value.replace(/_/g, " ");
@@ -94,6 +149,7 @@ function formatProperty(key: string, value: unknown, index: ModelIndex): string 
   if (typeof value === "string") {
     if (key.endsWith("level_id")) return index.levelsById.get(value)?.name ?? value;
     if (key.endsWith("_ref")) return index.assembliesById.get(value)?.name ?? value;
+    if (key.endsWith("_color")) return value; // display color (#rrggbb), not a material
     if (key.endsWith("material_id") || key.startsWith("finish_")) return materialName(value);
     return humanize(value);
   }
@@ -206,6 +262,7 @@ export function describeElement(el: BuildingElement, index: ModelIndex): Element
         ],
       },
       { title: "Properties", rows: properties },
+      ...designSection(el, index),
       ...typeSection(el, index),
       { title: `Relationships (${relationships.length})`, rows: relationships },
       {

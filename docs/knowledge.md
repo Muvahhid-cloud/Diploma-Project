@@ -1,20 +1,21 @@
 # Architectural Knowledge (Phase 3.5)
 
-Status: **K1 and K2 implemented (v0.2)** · Code: `apps/api/app/modules/catalog/` · Data: `data/knowledge/`
+Status: **K1, K2, K2.5 on main; K3 implemented (branch, awaiting review)** · Code: `apps/api/app/modules/catalog/` · Data: `data/knowledge/`
 
 Phase 3.5 grounds BuildAI in structured, source-attributed architectural knowledge. K1 is the
 foundation: schemas, provenance, the first packs, loading, integrity and hash locking. K2 adds
-component records (families, types, assemblies, role mappings) and the gated resolver. **Only
-the generation pipeline consumes the catalog** (import-linter contract), and only APPROVED
-records; engines receive plain `building.types` data. Nothing is approved yet, so generation is
-still untyped.
+component records (families, types, assemblies, role mappings) and the gated resolver. K3 adds
+design systems (§3.5). **Only the generation pipeline consumes the catalog** (import-linter
+contract), and only APPROVED records; engines receive plain `building.types` /
+`building.design` data. Nothing is approved yet, so generation is still untyped and no design
+system is usable (explicit colors, window placement and room orientation work without one).
 
 | Step | Scope | Status |
 |---|---|---|
 | **K1** Knowledge Foundation | catalog module, provenance, ontology, glossary, drawing profile, region-profile foundation, loader, registry, integrity, lock, first packs | ☑ |
-| K2 Families, Types, Assemblies | family/type/assembly/role-mapping records, generic type pack (draft), resolver, BuildingModel 1.1.0 type snapshots, layout integration | ☑ (awaiting review) |
-| K2.5 Architectural Geometry & Placement | geometric invariants and constraint-aware layout (§8.1); consumes no knowledge | ◐ (branch, awaiting review) |
-| K3 Design Systems | coherent combinations of types, assemblies, roofs, finishes, openings | ☐ |
+| K2 Families, Types, Assemblies | family/type/assembly/role-mapping records, generic type pack (draft), resolver, BuildingModel 1.1.0 type snapshots, layout integration | ☑ (pack awaiting review) |
+| K2.5 Architectural Geometry & Placement | geometric invariants and constraint-aware layout (§8.1); consumes no knowledge | ☑ |
+| K3 Design Systems + expressive design intent | design-system records (4 editorial drafts), gated resolution, BuildingModel 1.2.0 design record, spec 1.1.0 design intent (facade color, facade-specific windows, room orientation), layout/renderer/AI integration | ◐ (branch, awaiting review) |
 | K4 Templates | real building configurations (programme, relationships, circulation, constraints) | ☐ |
 | K5 Knowledge API and Units | read-only catalog API; imperial display/input conversion | ☐ |
 | K6 Optional Structural Elements | structural element types in the model | ☐ |
@@ -72,6 +73,8 @@ data/knowledge/
 │   │   ├── pack.yaml
 │   │   ├── ontology.yaml             79 classes, 9 relationship definitions
 │   │   └── glossary.en.yaml          60 canonical terms
+│   ├── buildai-generic-types.v1/     scope: global, components (K2, draft)
+│   ├── buildai-design-systems.v1/    scope: global, design systems + mappings (K3, draft)
 │   └── spds-georgievsky-2004.v1/     scope: drawing_convention_profile (spds), depends on core@1
 │       ├── pack.yaml
 │       ├── model.yaml  layout.yaml  drawing-sheets.yaml  drawing-views.yaml
@@ -176,6 +179,53 @@ Book-derived types (e.g. a GOST 11214-86 window family from
 `spds-georgievsky-2004@1:layout.window_sizes_gost_11214_86`) stay blocked while that item is
 `needs_verification`: integrity refuses to approve such a type and the resolver skips it.
 
+### 3.5 Design systems (K3)
+
+A **design system** (`DesignSystemRecord`, in a pack's `contents.components` file under
+`design_systems:`) is an editorial, region-neutral aesthetic grouping of compatible choices. It
+is **not** a building code, an engineering rule or a claim of architectural correctness, and it
+contains no construction data: types and assemblies come only through its role mapping.
+
+| Field | Meaning |
+|---|---|
+| `id` | kebab-case (`modern-minimal`), what `style.design_system` names |
+| `style_tags`, `interior_styles` | allow-lists of the spec's architectural / interior styles |
+| `role_mapping` | a K2 role mapping (types for every `TYPE_ROLES` role: walls, slabs, roofs, doors, windows, stair, railings) |
+| `roof` | allowed roof types, default, default pitch |
+| `windows` | allowed window sizes (standard/large/panoramic), default |
+| `facade` | allowed facade materials + default; color palette (names from `building/appearance.py`), default color, whether custom colors are allowed |
+| `finishes` | dry floor, wet floor, interior wall, wet-room wall (material ids) |
+| `furniture` | palette per slot (upholstery, light upholstery, wood, dark wood, cabinet, countertop) |
+
+**`buildai-design-systems@1`** (global, editorial, **draft**; depends on `core@1` and
+`buildai-generic-types@1`) holds `modern-minimal`, `contemporary-warm`, `classic-brick` and
+`scandinavian-timber`, their four role mappings, and nine *visual* type variants (steel/oak
+entrance doors, a glass stair railing, white- and oak-framed windows) that copy the generic
+types' dimensions and differ only in frame/leaf material or railing kind. Five render presets
+were added to the material library (`window_frame_white`, `oak_light`, `stone_tile`,
+`wall_warm`, `fabric_warm`; color and roughness only).
+
+**Integrity** (`component_integrity.check_design_systems`, code `DESIGN_SYSTEM_INCOMPLETE`
+unless noted): no duplicate values in allow-lists; defaults inside their allow-lists (roof,
+window style, facade material, color); no pitch for a flat default roof; palette names exist;
+a default color needs a palette or custom colors; finish/furniture materials exist
+(`UNKNOWN_MATERIAL`); the role mapping exists (its roles and types are checked as K2
+mappings); an **approved** system may only depend on an approved mapping, types, families and
+assemblies.
+
+**Resolution** (`catalog/design_systems.py`): `resolve_design(registry, id)` returns a
+`building.design.DesignSystemSnapshot` (sorted, with the record's sha256 and the resolved
+`type_ids`) plus the type set of its mapping — only if the system is approved **and** every
+role of its mapping resolves (K2 gating); otherwise the reason (never a substitute).
+`design_catalog(registry)` splits all systems into usable snapshots and unavailable ones with
+reasons; the generation pipeline exposes it (`available_design_systems`) to tier-2 checks
+(`building.design.check_design`), the AI prompt context (only usable systems are offered) and
+`GET /api/v1/design-options` (the specification form). With the repository's drafts nothing is
+usable: a spec naming a draft system fails tier 2 with `DESIGN_SYSTEM_NOT_APPROVED`.
+
+Tests approve records only in temporary copies (`tests/catalog/helpers.py
+approve_design_systems`, `approved_design_registry`), as in K2.
+
 ## 4. Drawing profiles
 
 A `DrawingProfile` (`spds@1`) is a versioned grouping of a pack's drawing items by topic (sets,
@@ -231,7 +281,7 @@ Workflow: edit data → run tests → `pnpm knowledge:lock` → commit data and 
 
 ## 8. What K1/K2 do not do
 
-No K3–K6 content (design systems, templates, catalog API, units, structural elements), no
+No K4–K6 content (templates, catalog API, units, structural elements; design systems are K3, §3.5), no
 retrieval layer or vector search, no costing, no prompt or specification changes. K2 changes the
 model schema (1.1.0, upgrade-on-read) and lets the layout engine use an approved type set; with
 the repository's draft pack, generated geometry is unchanged (geometry fingerprints equal).
@@ -257,6 +307,8 @@ K2 types are used as the model carries them: a type's FIXED dimensions are check
 - The book offers almost no room-programme knowledge; templates (K4) need other sources.
 - Generic assemblies are single-layer with unspecified materials, so Phase 4 quantities from
   them are coarse (volume by function) until real build-ups come from a reviewed source.
-- Only the generic role mapping exists; style- or facade-driven mappings are K3 design systems.
+- K3 design systems are editorial drafts; until a person reviews them (and the generic types
+  they build on) no design system is usable. Their type variants are visual only (frame/leaf
+  materials, railing kind); no system-specific assemblies or construction build-ups exist.
 - IFC mappings and English definitions are editorial and unreviewed (`draft`).
 - `params` are typed JSON values checked for units; typed per-kind schemas arrive with K2.

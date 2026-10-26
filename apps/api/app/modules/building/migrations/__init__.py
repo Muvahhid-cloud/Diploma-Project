@@ -9,7 +9,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from app.modules.building.migrations import v1_0_0_to_v1_1_0
+from app.modules.building.migrations import v1_0_0_to_v1_1_0, v1_1_0_to_v1_2_0
 from app.modules.building.model import SCHEMA_VERSION, BuildingModel
 
 Upgrade = Callable[[dict[str, Any]], dict[str, Any]]
@@ -17,6 +17,7 @@ Upgrade = Callable[[dict[str, Any]], dict[str, Any]]
 # from-version -> (to-version, pure upgrade function)
 UPGRADES: dict[str, tuple[str, Upgrade]] = {
     v1_0_0_to_v1_1_0.FROM_VERSION: (v1_0_0_to_v1_1_0.TO_VERSION, v1_0_0_to_v1_1_0.upgrade),
+    v1_1_0_to_v1_2_0.FROM_VERSION: (v1_1_0_to_v1_2_0.TO_VERSION, v1_1_0_to_v1_2_0.upgrade),
 }
 
 

@@ -1,5 +1,5 @@
 {
-  "engine_version": "layout@1.2.0",
+  "engine_version": "layout@1.3.0",
   "seed": 0,
   "footprint_m": [
     10.0,
@@ -19,7 +19,72 @@
     "walls": 43,
     "doors": 20,
     "windows": 32,
-    "elements": 179
+    "elements": 179,
+    "facade_colors": [],
+    "windows_by_facade": {
+      "front": {
+        "large": 3
+      },
+      "left": {
+        "large": 3
+      },
+      "rear": {
+        "large": 6
+      },
+      "right": {
+        "large": 4
+      }
+    },
+    "rooms_on_facade": {
+      "front": [
+        "room:bathroom_1",
+        "room:bathroom_3",
+        "room:bedroom_3",
+        "room:bedroom_4",
+        "room:garage",
+        "room:hall_0",
+        "room:kitchen",
+        "room:stair_1",
+        "room:stair_2"
+      ],
+      "left": [
+        "room:bedroom_2",
+        "room:corridor_0",
+        "room:corridor_1",
+        "room:corridor_2",
+        "room:garage",
+        "room:hall_0",
+        "room:living",
+        "room:master_bedroom",
+        "room:master_bedroom_en_suite",
+        "room:stair_2",
+        "room:wc"
+      ],
+      "rear": [
+        "room:balcony_0",
+        "room:bedroom_1",
+        "room:bedroom_2",
+        "room:dining",
+        "room:garage",
+        "room:living",
+        "room:master_bedroom",
+        "room:study",
+        "room:terrace"
+      ],
+      "right": [
+        "room:bathroom_3",
+        "room:bedroom_1",
+        "room:bedroom_4",
+        "room:corridor_0",
+        "room:corridor_1",
+        "room:corridor_2",
+        "room:dining",
+        "room:kitchen",
+        "room:master_bedroom",
+        "room:master_bedroom_walk_in_closet",
+        "room:storage"
+      ]
+    }
   },
   "element_counts": {
     "door": 20,
@@ -198,6 +263,6 @@
     "LAYOUT_AREA_DEVIATION",
     "LAYOUT_AREA_DEVIATION"
   ],
-  "model_sha256": "48df9eb2cdb57f109258c388dd57f7762cfd4cdbed96cfa13e78c6866ceae48f",
+  "model_sha256": "19652b7bbfaf156accd389598646c83b101771b6d739075592091efeb13f73af",
   "geometry_sha256": "7f8b01eec198bf312dc450b6fa411e01977ff0c86c6022235e26cd1861759a84"
 }

@@ -21,7 +21,10 @@ CORE_DIR = "packs/core.v1"
 GENERIC_PACK = "buildai-generic-types@1"
 GENERIC_DIR = "packs/buildai-generic-types.v1"
 GENERIC_COMPONENTS = f"{GENERIC_DIR}/components.yaml"
-COMPONENT_KINDS = ("families", "types", "assemblies", "role_mappings")
+DESIGN_PACK = "buildai-design-systems@1"
+DESIGN_DIR = "packs/buildai-design-systems.v1"
+DESIGN_COMPONENTS = f"{DESIGN_DIR}/design-systems.yaml"
+COMPONENT_KINDS = ("families", "types", "assemblies", "role_mappings", "design_systems")
 TEST_REVIEW = {"reviewed_by": "test-suite (temporary copy only)", "reviewed_on": "2026-09-28"}
 
 
@@ -65,14 +68,33 @@ def real_registry() -> KnowledgeRegistry:
 def approve_components(data: Path, only: set[str] | None = None) -> None:
     """Approve generic component records IN A TEMPORARY COPY (the repository copy stays draft)."""
 
+    edit_yaml(data, GENERIC_COMPONENTS, _approver(only))
+
+
+def _approver(only: set[str] | None) -> Callable[[Any], None]:
     def approve(doc: dict[str, Any]) -> None:
         for kind in COMPONENT_KINDS:
-            for rec in doc[kind]:
+            for rec in doc.get(kind, []):
                 if only is None or rec["id"] in only:
                     rec["status"] = "approved"
                     rec["review"] = dict(TEST_REVIEW)
 
-    edit_yaml(data, GENERIC_COMPONENTS, approve)
+    return approve
+
+
+def approve_design_systems(data: Path, only: set[str] | None = None) -> None:
+    """Approve the generic components AND the design-system pack records IN A TEMPORARY COPY
+    (the repository copies stay draft). `only` limits the design-pack records approved."""
+    approve_components(data)
+    edit_yaml(data, DESIGN_COMPONENTS, _approver(only))
+
+
+@cache
+def approved_design_registry() -> KnowledgeRegistry:
+    """The catalog as it would be once every design system is reviewed (temporary copy)."""
+    data = copy_data(Path(tempfile.mkdtemp(prefix="buildai-designs-")))
+    approve_design_systems(data)
+    return read_knowledge(data, verify=False)
 
 
 @cache

@@ -15,9 +15,16 @@ import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
+from app.modules.building.design import (
+    DesignSystemSnapshot,
+    effective_design,
+    resolve_facade_preferences,
+)
+from app.modules.building.elements import Room
 from app.modules.building.issues import Issue, pointer
 from app.modules.building.model import BuildingModel
-from app.modules.building.specification import BuildingSpecification
+from app.modules.building.primitives import EPS
+from app.modules.building.specification import BuildingSpecification, FacadeSide
 from app.modules.building.types import TypeSet
 from app.modules.building.validation import errors, validate_model
 from app.modules.layout.build import BuildError, build_model
@@ -39,6 +46,8 @@ from app.modules.rules.profile import BuildingRulesProfile
 
 AREA_WARNING_THRESHOLD = 0.15  # explicit room targets
 GFA_WARNING_THRESHOLD = 0.05
+# Plan bands of the double-loaded layout that reach a facade (street = south, garden = north).
+BAND_OF_FACADE = {FacadeSide.FRONT: "south", FacadeSide.REAR: "north"}
 
 
 class LayoutError(Exception):
@@ -120,8 +129,12 @@ def generate_layout(
     previous_ids: Mapping[str, uuid.UUID] | None = None,
     material_ids: Iterable[str] | None = None,
     type_set: TypeSet | None = None,
+    design_system: DesignSystemSnapshot | None = None,
 ) -> LayoutResult:
+    """`design_system` (K3) is an approved snapshot resolved by the generation pipeline; its
+    type set is passed as `type_set`. Precedence and effective values: building/design.py."""
     notes: list[str] = []
+    design = effective_design(spec, design_system)
     try:
         # Types replace the matching design defaults; geometry code reads the config as before.
         config = config_with_types(config, type_set)
@@ -186,8 +199,15 @@ def generate_layout(
         garage.cars * config.garage_width_per_car + config.garage_extra_width if garage else 0.0
     )
 
-    # Rooms that host a balcony or terrace must reach that facade.
+    # Rooms the user wants on a facade (rooms[].faces, K3) must reach it: front = the street
+    # side band (south), rear = the garden side band (north). Explicit wishes come first.
     wishes: dict[str, str] = {}
+    for room_key, facing in resolve_facade_preferences(spec).items():
+        band = BAND_OF_FACADE.get(facing)
+        if band is not None:
+            for inst in program.instances(room_key):
+                wishes.setdefault(inst.key, band)
+    # Rooms that host a balcony or terrace must reach that facade.
     hosts: list[tuple[str | None, str]] = [
         (b.attached_to, "north" if b.side == "garden" else "south") for b in spec.features.balconies
     ]
@@ -236,6 +256,7 @@ def generate_layout(
                 id_namespace=id_namespace,
                 previous_ids=previous_ids,
                 type_set=type_set,
+                design=design,
             )
         except BuildError as exc:
             failures.append(str(exc))
@@ -246,6 +267,7 @@ def generate_layout(
             failures.append("; ".join(f"{i.code}: {i.message}" for i in blocking[:3]))
             continue
         warnings = _deviations(cand, program, spec, gfa)
+        warnings += _orientation(model, program, spec, cand.skeleton.D)
         warnings += [i for i in issues if i.severity == "warning"]
         return LayoutResult(
             model=model,
@@ -280,6 +302,31 @@ def _infeasible(exc: PlanningError) -> LayoutError:
         ]
         or [Issue(severity="error", code="LAYOUT_INFEASIBLE", path="", message=str(exc))],
     )
+
+
+def _orientation(
+    model: BuildingModel, program: Program, spec: BuildingSpecification, depth: float
+) -> list[Issue]:
+    """ROOM_FACADE_UNMET for a room that does not reach the facade it should face."""
+    out: list[Issue] = []
+    rooms = {el.semantic_key: el for el in model.elements if isinstance(el, Room)}
+    for key, side in resolve_facade_preferences(spec).items():
+        for inst in program.instances(key):
+            room = rooms.get(f"room:{inst.key}")
+            if room is None or side not in BAND_OF_FACADE:
+                continue
+            ys = [room.position.y + p.y for p in room.properties.boundary]
+            reached = min(ys) < EPS if side == FacadeSide.FRONT else max(ys) > depth - EPS
+            if not reached:
+                out.append(
+                    Issue(
+                        severity="warning",
+                        code="ROOM_FACADE_UNMET",
+                        path=pointer("rooms", inst.spec_index, "faces"),
+                        message=f"{inst.name} could not be placed on the {side.value} facade",
+                    )
+                )
+    return out
 
 
 def _deviations(

@@ -1,7 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$comment": "GENERATED from Pydantic (schema_version 1.1.0). Do not edit.",
+  "$comment": "GENERATED from Pydantic (schema_version 1.2.0). Do not edit.",
   "$defs": {
+    "ArchitecturalStyle": {
+      "enum": [
+        "modern",
+        "minimalist",
+        "contemporary",
+        "classic",
+        "traditional",
+        "scandinavian",
+        "industrial",
+        "mediterranean",
+        "luxury"
+      ],
+      "title": "ArchitecturalStyle",
+      "type": "string"
+    },
     "AssemblyKind": {
       "enum": [
         "wall",
@@ -85,6 +100,268 @@
         "description"
       ],
       "title": "BuildingInfo",
+      "type": "object"
+    },
+    "DesignFacade": {
+      "additionalProperties": false,
+      "properties": {
+        "materials": {
+          "items": {
+            "$ref": "#/$defs/FacadeMaterial"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "default_material": {
+          "$ref": "#/$defs/FacadeMaterial"
+        },
+        "colors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "default_color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "custom_colors": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "materials",
+        "default_material",
+        "colors",
+        "default_color",
+        "custom_colors"
+      ],
+      "title": "DesignFacade",
+      "type": "object"
+    },
+    "DesignFinishes": {
+      "additionalProperties": false,
+      "description": "Interior finish materials (material-library ids; render appearance + future costing).",
+      "properties": {
+        "dry_floor": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "wet_floor": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "interior_wall": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "wet_wall": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dry_floor",
+        "wet_floor",
+        "interior_wall",
+        "wet_wall"
+      ],
+      "title": "DesignFinishes",
+      "type": "object"
+    },
+    "DesignRecord": {
+      "additionalProperties": false,
+      "description": "The design decisions a model was generated with (self-contained; K3).",
+      "properties": {
+        "design_system": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DesignSystemSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "facade_color": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EffectiveColor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "windows": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WindowIntentRecord"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "design_system",
+        "facade_color",
+        "windows"
+      ],
+      "title": "DesignRecord",
+      "type": "object"
+    },
+    "DesignRoof": {
+      "additionalProperties": false,
+      "properties": {
+        "types": {
+          "items": {
+            "$ref": "#/$defs/RoofType"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "default": {
+          "$ref": "#/$defs/RoofType"
+        },
+        "default_pitch_deg": {
+          "anyOf": [
+            {
+              "maximum": 45,
+              "minimum": 5,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "types",
+        "default",
+        "default_pitch_deg"
+      ],
+      "title": "DesignRoof",
+      "type": "object"
+    },
+    "DesignSystemSnapshot": {
+      "additionalProperties": false,
+      "description": "An approved design system as copied into a model (self-contained, like type snapshots).",
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 2,
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 80,
+          "pattern": "^[a-z][a-z0-9-]*@[1-9][0-9]*$",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "style_tags": {
+          "items": {
+            "$ref": "#/$defs/ArchitecturalStyle"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "interior_styles": {
+          "items": {
+            "$ref": "#/$defs/InteriorStyle"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "role_mapping": {
+          "maxLength": 96,
+          "type": "string"
+        },
+        "type_ids": {
+          "items": {
+            "maxLength": 96,
+            "pattern": "^type\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "roof": {
+          "$ref": "#/$defs/DesignRoof"
+        },
+        "windows": {
+          "$ref": "#/$defs/DesignWindows"
+        },
+        "facade": {
+          "$ref": "#/$defs/DesignFacade"
+        },
+        "finishes": {
+          "$ref": "#/$defs/DesignFinishes"
+        },
+        "furniture": {
+          "$ref": "#/$defs/FurniturePalette"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "source",
+        "content_sha256",
+        "style_tags",
+        "interior_styles",
+        "role_mapping",
+        "type_ids",
+        "roof",
+        "windows",
+        "facade",
+        "finishes",
+        "furniture"
+      ],
+      "title": "DesignSystemSnapshot",
+      "type": "object"
+    },
+    "DesignWindows": {
+      "additionalProperties": false,
+      "properties": {
+        "styles": {
+          "items": {
+            "$ref": "#/$defs/WindowStyle"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "default": {
+          "$ref": "#/$defs/WindowStyle"
+        }
+      },
+      "required": [
+        "styles",
+        "default"
+      ],
+      "title": "DesignWindows",
       "type": "object"
     },
     "Door": {
@@ -350,6 +627,62 @@
       "title": "DoorTypeParams",
       "type": "object"
     },
+    "EffectiveColor": {
+      "additionalProperties": false,
+      "properties": {
+        "hex": {
+          "pattern": "^#[0-9a-f]{6}$",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source": {
+          "enum": [
+            "user",
+            "design_system"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "hex",
+        "name",
+        "source"
+      ],
+      "title": "EffectiveColor",
+      "type": "object"
+    },
+    "FacadeMaterial": {
+      "description": "High-level facade choice; the layout engine maps it to material-library ids.",
+      "enum": [
+        "render",
+        "brick",
+        "concrete",
+        "timber"
+      ],
+      "title": "FacadeMaterial",
+      "type": "string"
+    },
+    "FacadeSide": {
+      "description": "Semantic facade of the house (building/facades.py). The street is on the model's south\nside (-y): front = street/entrance side, rear = garden/backyard side, left/right as seen\nfrom the street.",
+      "enum": [
+        "front",
+        "rear",
+        "left",
+        "right"
+      ],
+      "title": "FacadeSide",
+      "type": "string"
+    },
     "Furniture": {
       "additionalProperties": false,
       "description": "Furniture/fixture placeholder. position = base center on the floor.",
@@ -506,6 +839,52 @@
       "title": "FurnitureKind",
       "type": "string"
     },
+    "FurniturePalette": {
+      "additionalProperties": false,
+      "description": "Furniture materials by slot (placeholders use these material ids).",
+      "properties": {
+        "upholstery": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "upholstery_light": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "wood": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "wood_dark": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "cabinet": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        "countertop": {
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "upholstery",
+        "upholstery_light",
+        "wood",
+        "wood_dark",
+        "cabinet",
+        "countertop"
+      ],
+      "title": "FurniturePalette",
+      "type": "object"
+    },
     "FurnitureProperties": {
       "additionalProperties": false,
       "properties": {
@@ -529,6 +908,19 @@
       ],
       "title": "FurnitureProperties",
       "type": "object"
+    },
+    "InteriorStyle": {
+      "enum": [
+        "minimalist",
+        "modern",
+        "classic",
+        "scandinavian",
+        "industrial",
+        "luxury",
+        "cozy"
+      ],
+      "title": "InteriorStyle",
+      "type": "string"
     },
     "LayerFunction": {
       "enum": [
@@ -1999,6 +2391,30 @@
               "type": "null"
             }
           ]
+        },
+        "finish_left_color": {
+          "anyOf": [
+            {
+              "pattern": "^#[0-9a-f]{6}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "finish_right_color": {
+          "anyOf": [
+            {
+              "pattern": "^#[0-9a-f]{6}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -2006,7 +2422,9 @@
         "alignment",
         "load_bearing",
         "finish_left_id",
-        "finish_right_id"
+        "finish_right_id",
+        "finish_left_color",
+        "finish_right_color"
       ],
       "title": "WallProperties",
       "type": "object"
@@ -2161,6 +2579,42 @@
       "title": "WindowDimensions",
       "type": "object"
     },
+    "WindowIntentRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "emphasis": {
+          "$ref": "#/$defs/WindowStyle"
+        },
+        "preferred_facades": {
+          "items": {
+            "$ref": "#/$defs/FacadeSide"
+          },
+          "type": "array"
+        },
+        "excluded_facades": {
+          "items": {
+            "$ref": "#/$defs/FacadeSide"
+          },
+          "type": "array"
+        },
+        "source": {
+          "default": "user",
+          "enum": [
+            "user",
+            "design_system"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "emphasis",
+        "preferred_facades",
+        "excluded_facades",
+        "source"
+      ],
+      "title": "WindowIntentRecord",
+      "type": "object"
+    },
     "WindowKind": {
       "enum": [
         "fixed",
@@ -2193,15 +2647,36 @@
           "maximum": 12,
           "minimum": 0,
           "type": "integer"
+        },
+        "size_class": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WindowStyle"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
         "window_kind",
         "frame_material_id",
-        "mullions"
+        "mullions",
+        "size_class"
       ],
       "title": "WindowProperties",
       "type": "object"
+    },
+    "WindowStyle": {
+      "enum": [
+        "standard",
+        "large",
+        "panoramic"
+      ],
+      "title": "WindowStyle",
+      "type": "string"
     },
     "WindowTypeParams": {
       "additionalProperties": false,
@@ -2367,7 +2842,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "1.1.0",
+      "const": "1.2.0",
       "type": "string"
     },
     "id": {
@@ -2463,6 +2938,17 @@
         "$ref": "#/$defs/AssemblySnapshot"
       },
       "type": "array"
+    },
+    "design": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DesignRecord"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [
@@ -2476,7 +2962,8 @@
     "elements",
     "metadata",
     "types",
-    "assemblies"
+    "assemblies",
+    "design"
   ],
   "title": "BuildingModel",
   "type": "object"

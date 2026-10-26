@@ -21,6 +21,11 @@
     { "id": "ceramic", "name": "Sanitary ceramic", "category": "sanitary", "color": "#f8f8f6", "roughness": 0.2, "metalness": 0 },
     { "id": "countertop", "name": "Stone countertop", "category": "kitchen", "color": "#34353a", "roughness": 0.35, "metalness": 0 },
     { "id": "screen", "name": "Screen (black glass)", "category": "appliance", "color": "#16181b", "roughness": 0.15, "metalness": 0.2 },
-    { "id": "cabinet", "name": "Cabinet (matte white)", "category": "kitchen", "color": "#eeebe4", "roughness": 0.6, "metalness": 0 }
+    { "id": "cabinet", "name": "Cabinet (matte white)", "category": "kitchen", "color": "#eeebe4", "roughness": 0.6, "metalness": 0 },
+    { "id": "window_frame_white", "name": "Window frame (white)", "category": "frames", "color": "#f1efe9", "roughness": 0.5, "metalness": 0.1 },
+    { "id": "oak_light", "name": "Light oak (floor, furniture)", "category": "wood", "color": "#d8bc8f", "roughness": 0.55, "metalness": 0 },
+    { "id": "stone_tile", "name": "Stone-look tile (warm grey)", "category": "floor_finish", "color": "#b9b3a8", "roughness": 0.5, "metalness": 0 },
+    { "id": "wall_warm", "name": "Interior paint (warm white)", "category": "wall_finish", "color": "#efe6d6", "roughness": 0.95, "metalness": 0 },
+    { "id": "fabric_warm", "name": "Upholstery (warm terracotta)", "category": "textile", "color": "#a4735a", "roughness": 1, "metalness": 0 }
   ]
 }

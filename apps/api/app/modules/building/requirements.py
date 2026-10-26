@@ -5,6 +5,9 @@ request and the result are never hidden, and used to detect when an AI repair ch
 user's program.
 """
 
+import re
+
+from app.modules.building.appearance import resolve_color
 from app.modules.building.primitives import Frozen
 from app.modules.building.specification import BuildingSpecification, RoomFeature, SpecRoomType
 from app.modules.building.summary import ModelSummary
@@ -127,6 +130,75 @@ def requirement_checks(
                 requested="yes",
                 delivered="built" if summary.terraces else "missing",
                 met=summary.terraces > 0,
+            )
+        )
+    return checks + design_checks(spec, summary)
+
+
+def _instance_keys(room_key: str, keys: list[str]) -> list[str]:
+    """Semantic keys of the rooms generated for a requirement ("living", "bedroom_2", ...)."""
+    pattern = re.compile(rf"^room:{re.escape(room_key)}(_\d+)?$")
+    return [k for k in keys if pattern.match(k)]
+
+
+def design_checks(spec: BuildingSpecification, summary: ModelSummary) -> list[RequirementCheck]:
+    """Requested vs delivered for explicit design intent (K3): facade color, window sizes per
+    facade, room orientation — read from the generated model, not from the request."""
+    checks: list[RequirementCheck] = []
+    color = spec.design.facade_color
+    if color is not None:
+        resolved = resolve_color(color)
+        delivered = ", ".join(summary.facade_colors) or "material color"
+        checks.append(
+            RequirementCheck(
+                key="facade_color",
+                label="Facade color",
+                requested=f"{color} ({resolved.hex})" if resolved else color,
+                delivered=delivered,
+                met=resolved is not None and summary.facade_colors == [resolved.hex],
+            )
+        )
+    intent = spec.design.windows
+    if intent is not None:
+        emphasis = intent.emphasis.value
+        for side in intent.preferred_facades:
+            n = summary.windows_by_facade.get(side.value, {}).get(emphasis, 0)
+            checks.append(
+                RequirementCheck(
+                    key=f"windows_{side.value}",
+                    label=f"{emphasis.capitalize()} windows on the {side.value} facade",
+                    requested="yes",
+                    delivered=f"{n} placed",
+                    met=n > 0,
+                )
+            )
+        for side in intent.excluded_facades:
+            sizes = summary.windows_by_facade.get(side.value, {})
+            n = sum(sizes.get(s, 0) for s in ("large", "panoramic"))
+            checks.append(
+                RequirementCheck(
+                    key=f"no_windows_{side.value}",
+                    label=f"No large/panoramic windows on the {side.value} facade",
+                    requested="none",
+                    delivered=f"{n} placed",
+                    met=n == 0,
+                )
+            )
+    all_keys = sorted({k for keys in summary.rooms_on_facade.values() for k in keys})
+    for room in spec.rooms:
+        if room.faces is None:
+            continue
+        on_side = set(summary.rooms_on_facade.get(room.faces.value, []))
+        instances = _instance_keys(room.key, all_keys) or [f"room:{room.key}"]
+        placed = [k for k in instances if k in on_side]
+        checks.append(
+            RequirementCheck(
+                key=f"faces_{room.key}",
+                label=f"{room.name or room.key.replace('_', ' ').capitalize()} faces "
+                f"the {room.faces.value}",
+                requested=room.faces.value,
+                delivered="yes" if len(placed) == len(instances) else "no",
+                met=len(placed) == len(instances),
             )
         )
     return checks

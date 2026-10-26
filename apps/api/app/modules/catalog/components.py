@@ -12,6 +12,18 @@ from typing import Annotated
 
 from pydantic import Field, StringConstraints
 
+from app.modules.building.design import (
+    DesignFacade,
+    DesignFinishes,
+    DesignRoof,
+    DesignWindows,
+    FurniturePalette,
+)
+from app.modules.building.specification import (
+    ArchitecturalStyle,
+    DesignSystemRef,
+    InteriorStyle,
+)
 from app.modules.building.types import (
     AssemblyId,
     AssemblyKind,
@@ -78,8 +90,28 @@ class RoleMapping(Provenanced):
     roles: dict[str, TypeId]
 
 
+class DesignSystemRecord(Provenanced):
+    """A coherent, editorial set of compatible choices (K3; resolution in design_systems.py).
+
+    Allow-lists plus defaults; types come only through `role_mapping`. Region-neutral, not a
+    building code and not engineering data."""
+
+    id: DesignSystemRef
+    name: ShortText
+    description: Paraphrase
+    style_tags: list[ArchitecturalStyle] = Field(min_length=1)
+    interior_styles: list[InteriorStyle] = Field(min_length=1)
+    role_mapping: MappingId
+    roof: DesignRoof
+    windows: DesignWindows
+    facade: DesignFacade
+    finishes: DesignFinishes
+    furniture: FurniturePalette
+
+
 class ComponentsDocument(KnowledgeModel):
     families: list[FamilyRecord] = Field(default_factory=list)
     types: list[TypeRecord] = Field(default_factory=list)
     assemblies: list[AssemblyRecord] = Field(default_factory=list)
     role_mappings: list[RoleMapping] = Field(default_factory=list)
+    design_systems: list[DesignSystemRecord] = Field(default_factory=list)

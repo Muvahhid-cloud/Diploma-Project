@@ -37,6 +37,8 @@ NonNegativeMeters = Annotated[
 SquareMeters = Annotated[float, Field(ge=0, allow_inf_nan=False), AfterValidator(_round_area)]
 Radians = Annotated[float, Field(allow_inf_nan=False), AfterValidator(_round_angle)]
 MaterialId = Annotated[str, Field(pattern=MATERIAL_ID_PATTERN, max_length=64)]
+# sRGB display color, lower-case "#rrggbb". Visual only: never a construction property.
+HexColor = Annotated[str, Field(pattern=r"^#[0-9a-f]{6}$")]
 
 
 class Frozen(BaseModel):

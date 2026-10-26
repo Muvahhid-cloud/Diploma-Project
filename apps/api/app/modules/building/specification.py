@@ -17,10 +17,21 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.building.enums import RoofType
 
-SPEC_SCHEMA_VERSION = "1.0.0"
+SPEC_SCHEMA_VERSION = "1.1.0"
+# 1.1.0 (K3, additive): style.design_system, design (facade color, window intent), rooms[].faces.
+# Every 1.1.0 field is optional and null means "not requested", so a 1.0.0 document is a valid
+# 1.1.0 document with unchanged meaning.
+SUPPORTED_SPEC_VERSIONS = ("1.0.0", "1.1.0")
 
 KEY_PATTERN = r"^[a-z][a-z0-9_]*$"
 SpecKey = Annotated[str, Field(pattern=KEY_PATTERN, min_length=1, max_length=40)]
+# Design-system id, e.g. "modern-minimal" (catalog record; availability is checked in tier 2).
+DesignSystemRef = Annotated[
+    str, Field(pattern=r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$", min_length=2, max_length=64)
+]
+# A palette color name ("yellow", "warm_beige") or "#rrggbb". The name is resolved against the
+# fixed palette in building/appearance.py by tier-2 checks (APPEARANCE_INVALID otherwise).
+ColorValue = Annotated[str, Field(pattern=r"^(#[0-9a-f]{6}|[a-z][a-z_]{1,30})$")]
 
 
 class SpecModel(BaseModel):
@@ -88,6 +99,17 @@ class SpecRoomType(StrEnum):
     PLANT_ROOM = "plant_room"
 
 
+class FacadeSide(StrEnum):
+    """Semantic facade of the house (building/facades.py). The street is on the model's south
+    side (-y): front = street/entrance side, rear = garden/backyard side, left/right as seen
+    from the street."""
+
+    FRONT = "front"
+    REAR = "rear"
+    LEFT = "left"
+    RIGHT = "right"
+
+
 class RoomFeature(StrEnum):
     """Rooms attached to a bedroom and reached through it."""
 
@@ -125,9 +147,30 @@ class Style(SpecModel):
     architectural_style: ArchitecturalStyle = ArchitecturalStyle.MODERN
     interior_style: InteriorStyle | None = None
     roof: RoofSpec = RoofSpec()
+    # Building-wide default window size; `design.windows` can emphasise chosen facades.
     window_style: WindowStyle = WindowStyle.STANDARD
     facade_material: FacadeMaterial = FacadeMaterial.RENDER
     interior_finish_level: FinishLevel = FinishLevel.STANDARD
+    # Coherent set of components, finishes and palette (catalog, K3). Explicit values in this
+    # spec always win over the system's defaults; values outside its allow-lists are conflicts.
+    design_system: DesignSystemRef | None = None
+
+
+class WindowIntent(SpecModel):
+    """Where the emphasised (large/panoramic) windows go. Facades not listed keep
+    `style.window_style`; excluded facades never get emphasised windows (standard ones)."""
+
+    emphasis: WindowStyle = WindowStyle.PANORAMIC
+    preferred_facades: list[FacadeSide] = Field(min_length=1, max_length=4)
+    excluded_facades: list[FacadeSide] = Field(default_factory=list, max_length=3)
+
+
+class DesignIntent(SpecModel):
+    """Explicit visual/directional design requests (1.1.0). Null = not requested."""
+
+    # Display color of the exterior wall faces (render appearance, not a material change).
+    facade_color: ColorValue | None = None
+    windows: WindowIntent | None = None
 
 
 class RoomRequirement(SpecModel):
@@ -141,6 +184,8 @@ class RoomRequirement(SpecModel):
     adjacent_to: list[SpecKey] = Field(default_factory=list, max_length=8)  # share a wall
     open_to: list[SpecKey] = Field(default_factory=list, max_length=4)  # open plan (no wall)
     features: list[RoomFeature] = Field(default_factory=list, max_length=2)
+    # Facade the room should face (1.1.0). The double-loaded plan honours front and rear.
+    faces: FacadeSide | None = None
 
 
 class Garage(SpecModel):
@@ -188,7 +233,7 @@ class Assumption(SpecModel):
 
 
 class BuildingSpecification(SpecModel):
-    schema_version: Literal["1.0.0"] = "1.0.0"
+    schema_version: Literal["1.0.0", "1.1.0"] = "1.1.0"
     building_type: Literal["single_family_house"] = "single_family_house"
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=2000)
@@ -197,6 +242,7 @@ class BuildingSpecification(SpecModel):
     style: Style = Style()
     rooms: list[RoomRequirement] = Field(min_length=1, max_length=40)
     features: Features = Features()
+    design: DesignIntent = DesignIntent()
     budget: Budget | None = None
     assumptions: list[Assumption] = Field(default_factory=list, max_length=50)
     open_questions: list[str] = Field(default_factory=list, max_length=20)

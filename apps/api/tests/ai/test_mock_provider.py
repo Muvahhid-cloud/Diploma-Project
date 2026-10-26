@@ -29,7 +29,42 @@ SPEC_PROMPTS = [
     "classic brick three-storey house of 360 sqm with 5 bedrooms, 4 bathrooms, study, laundry "
     "and 2 balconies",
     "Scandinavian timber cottage, 120 m², 2 bedrooms, guest WC, pitched roof",
+    # K3 design intent
+    "Modern two-story house of 200 m² with 3 bedrooms. Make the exterior walls yellow. "
+    "Large panoramic windows facing the garden, not on the street side. The living room "
+    "should face the backyard.",
+    "Single-storey 140 m2 bungalow with 2 bedrooms, light grey facade and big windows on "
+    "the right side",
 ]
+
+
+def test_design_intent_is_interpreted() -> None:
+    d = draft(SPEC_PROMPTS[-2])
+    assert d.specification is not None
+    spec = d.specification
+    assert spec.design.facade_color == "yellow"
+    assert spec.design.windows is not None
+    assert spec.design.windows.emphasis == "panoramic"
+    assert spec.design.windows.preferred_facades == ["rear"]
+    assert spec.design.windows.excluded_facades == ["front"]
+    assert spec.style.window_style == "standard"  # emphasis stays on the named facade
+    living = next(r for r in spec.rooms if r.key == "living")
+    assert living.faces == "rear"
+
+
+def test_color_synonyms_and_side_facades() -> None:
+    d = draft(SPEC_PROMPTS[-1])
+    assert d.specification is not None
+    assert d.specification.design.facade_color == "light_grey"
+    windows = d.specification.design.windows
+    assert windows is not None and windows.emphasis == "large"
+    assert windows.preferred_facades == ["right"] and windows.excluded_facades == []
+
+
+def test_plain_large_windows_stay_building_wide() -> None:
+    d = draft(DEMO_PROMPT)
+    assert d.specification is not None
+    assert d.specification.design.windows is None and d.specification.design.facade_color is None
 
 
 def draft(prompt: str, options: GenerationOptions | None = None) -> SpecificationDraft:

@@ -70,9 +70,18 @@ export type SpecRoomType =
  * via the `definition` "RoomFeature".
  */
 export type RoomFeature = "en_suite" | "walk_in_closet";
+/**
+ * Semantic facade of the house (building/facades.py). The street is on the model's south
+ * side (-y): front = street/entrance side, rear = garden/backyard side, left/right as seen
+ * from the street.
+ *
+ * This interface was referenced by `BuildingSpecification`'s JSON-Schema
+ * via the `definition` "FacadeSide".
+ */
+export type FacadeSide = "front" | "rear" | "left" | "right";
 
 export interface BuildingSpecification {
-  schema_version?: "1.0.0";
+  schema_version?: "1.0.0" | "1.1.0";
   building_type?: "single_family_house";
   name: string;
   description?: string;
@@ -85,6 +94,7 @@ export interface BuildingSpecification {
    */
   rooms: RoomRequirement[];
   features?: Features;
+  design?: DesignIntent;
   budget?: Budget | null;
   /**
    * @maxItems 50
@@ -131,6 +141,7 @@ export interface Style {
   window_style?: WindowStyle;
   facade_material?: FacadeMaterial;
   interior_finish_level?: FinishLevel;
+  design_system?: string | null;
 }
 /**
  * This interface was referenced by `BuildingSpecification`'s JSON-Schema
@@ -164,6 +175,7 @@ export interface RoomRequirement {
    * @maxItems 2
    */
   features?: RoomFeature[];
+  faces?: FacadeSide | null;
 }
 /**
  * This interface was referenced by `BuildingSpecification`'s JSON-Schema
@@ -205,6 +217,35 @@ export interface Terrace {
   attached_to?: string | null;
   width_m?: number | null;
   depth_m?: number;
+}
+/**
+ * Explicit visual/directional design requests (1.1.0). Null = not requested.
+ *
+ * This interface was referenced by `BuildingSpecification`'s JSON-Schema
+ * via the `definition` "DesignIntent".
+ */
+export interface DesignIntent {
+  facade_color?: string | null;
+  windows?: WindowIntent | null;
+}
+/**
+ * Where the emphasised (large/panoramic) windows go. Facades not listed keep
+ * `style.window_style`; excluded facades never get emphasised windows (standard ones).
+ *
+ * This interface was referenced by `BuildingSpecification`'s JSON-Schema
+ * via the `definition` "WindowIntent".
+ */
+export interface WindowIntent {
+  emphasis?: WindowStyle;
+  /**
+   * @minItems 1
+   * @maxItems 4
+   */
+  preferred_facades: FacadeSide[];
+  /**
+   * @maxItems 3
+   */
+  excluded_facades?: FacadeSide[];
 }
 /**
  * A constraint recorded with the spec. Nothing is costed from it in Phase 2.

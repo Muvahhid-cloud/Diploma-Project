@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { parseBuildingModel } from "@/engine/model/parse";
-import { bySemanticKey, demoIndex, typedDemoModelJson } from "@/engine/test-fixtures";
+import {
+  bySemanticKey,
+  demoIndex,
+  generatedModelJson,
+  typedDemoModelJson,
+} from "@/engine/test-fixtures";
 
 import { describeElement } from "./describe-element";
 
@@ -28,6 +33,42 @@ describe("describeElement", () => {
     expect(row("Load-bearing")).toBe("Yes");
     expect(row("ID")).toBe(wall.id);
     expect(row("Level")).toBe("Floor 1 (+0 m)");
+  });
+
+  it("names the facade of exterior walls and their openings (K3)", () => {
+    expect(rows("wall:G-S").row("Facade")).toBe("Front");
+    expect(rows("wall:G-N").row("Facade")).toBe("Rear");
+    expect(rows("wall:G-S").row("Design system")).toBe("None (generic)");
+  });
+
+  it("shows a facade display color and window size class, not a material", () => {
+    const doc = structuredClone(generatedModelJson());
+    doc.design = {
+      design_system: null,
+      facade_color: { hex: "#e8c547", name: "yellow", source: "user" },
+      windows: null,
+    };
+    for (const el of doc.elements) {
+      if (el.type === "wall" && el.properties.wall_kind === "exterior") {
+        el.properties.finish_right_color = "#e8c547";
+      }
+    }
+    const colored = parseBuildingModel(doc);
+    const wall = colored.model.elements.find(
+      (e) => e.type === "wall" && e.properties.wall_kind === "exterior",
+    )!;
+    const d = describeElement(wall, colored);
+    const row = (label: string) =>
+      d.sections.flatMap((s) => s.rows).find((r) => r.label === label)?.value;
+    expect(row("Right face display color")).toBe("#e8c547");
+    expect(row("Facade color")).toBe("Yellow · #e8c547 (your requirement)");
+    const window = colored.model.elements.find(
+      (e) => e.type === "window" && e.properties.size_class !== null,
+    )!;
+    const w = describeElement(window, colored);
+    expect(w.sections.find((s) => s.title === "Design")?.rows.map((r) => r.label)).toContain(
+      "Size class",
+    );
   });
 
   it("describes rooms with area and type", () => {

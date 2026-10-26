@@ -14,6 +14,7 @@ from app.modules.ai.router import project_router as ai_project_router
 from app.modules.ai.router import router as ai_router
 from app.modules.auth.router import router as auth_router
 from app.modules.demo.router import router as demo_router
+from app.modules.generation.router import design_router
 from app.modules.generation.router import router as generation_router
 from app.modules.health.router import router as health_router
 from app.modules.jobs.repository import JobRepository
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     v1.include_router(projects_router)
     v1.include_router(versions_router)
     v1.include_router(generation_router)
+    v1.include_router(design_router)
     v1.include_router(jobs_router)
     v1.include_router(ai_router)
     v1.include_router(ai_project_router)

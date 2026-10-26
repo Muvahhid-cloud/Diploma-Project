@@ -35,9 +35,10 @@ from app.modules.ai.models import AIGeneration, AIRun
 from app.modules.ai.providers import get_ai_provider
 from app.modules.ai.schemas.generation import GenerationOptions, InterpretationOutcome
 from app.modules.auth.models import User
+from app.modules.building.design import check_design
 from app.modules.building.issues import Issue
 from app.modules.building.specification import BuildingSpecification
-from app.modules.generation.pipeline import layout_and_save
+from app.modules.generation.pipeline import available_design_systems, layout_and_save
 from app.modules.layout.config import DEFAULT_CONFIG
 from app.modules.layout.engine import LayoutError
 from app.modules.projects.models import Project
@@ -172,11 +173,14 @@ class BuildingGenerationService:
 
         profile = rules_profile(settings.data_dir, project.rules_profile_id)
         options = GenerationOptions.model_validate(gen.options)
+        designs = available_design_systems()  # usable (approved) design systems only (K3)
 
         def validate_spec(spec: BuildingSpecification) -> list[Issue]:
-            return check_spec(
-                spec, profile, floor_structure_m=DEFAULT_CONFIG.floor_slab_thickness
-            ) + check_options(spec, options)
+            return (
+                check_spec(spec, profile, floor_structure_m=DEFAULT_CONFIG.floor_slab_thickness)
+                + check_design(spec, designs)
+                + check_options(spec, options)
+            )
 
         try:
             provider = get_ai_provider()
@@ -185,7 +189,10 @@ class BuildingGenerationService:
                 provider=provider,
                 options=options,
                 context=generation_context(
-                    region_code=project.region_code, currency=project.currency, profile=profile
+                    region_code=project.region_code,
+                    currency=project.currency,
+                    profile=profile,
+                    design_systems=designs,
                 ),
                 validate_spec=validate_spec,
                 max_repairs=settings.ai_max_repairs,

@@ -1,4 +1,4 @@
-// One THREE material per (material id, variant), created lazily and shared by every mesh.
+// One THREE material per (material key, variant), created lazily and shared by every mesh.
 import { Color, FrontSide, MeshStandardMaterial } from "three";
 
 import { MATERIAL_PRESETS, materialPreset } from "./library";
@@ -6,6 +6,23 @@ import { MATERIAL_PRESETS, materialPreset } from "./library";
 export type MaterialVariant = "default" | "selected" | "ghost";
 
 const SELECTION_EMISSIVE = new Color("#2f6fed");
+const HEX = /^#[0-9a-f]{6}$/;
+
+/**
+ * Material key of a face drawn in a display color (K3 appearance intent): the library preset
+ * `id` with only its color replaced ("exterior_wall@#e8c547"). Roughness, metalness and the
+ * material id itself are unchanged — a color is appearance, never a different material.
+ */
+export function coloredMaterialKey(id: string, color: string | null | undefined): string {
+  return color && HEX.test(color) ? `${id}@${color}` : id;
+}
+
+export function parseMaterialKey(key: string): { id: string; color: string | null } {
+  const at = key.lastIndexOf("@");
+  if (at > 0 && HEX.test(key.slice(at + 1)))
+    return { id: key.slice(0, at), color: key.slice(at + 1) };
+  return { id: key, color: null };
+}
 
 export class MaterialCache {
   private readonly materials = new Map<string, MeshStandardMaterial>();
@@ -36,13 +53,14 @@ export class MaterialCache {
     this.missing.clear();
   }
 
-  private create(id: string, variant: MaterialVariant): MeshStandardMaterial {
+  private create(key: string, variant: MaterialVariant): MeshStandardMaterial {
+    const { id, color } = parseMaterialKey(key);
     if (!MATERIAL_PRESETS.has(id)) this.missing.add(id);
     const p = materialPreset(id);
     const opacity = p.opacity ?? 1;
     const material = new MeshStandardMaterial({
-      name: `${id}:${variant}`,
-      color: new Color(p.color),
+      name: `${key}:${variant}`,
+      color: new Color(color ?? p.color),
       roughness: p.roughness,
       metalness: p.metalness,
       side: FrontSide,

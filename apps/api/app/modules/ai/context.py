@@ -14,6 +14,7 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict
 
+from app.modules.building.design import DesignCatalog, DesignSystemSnapshot
 from app.modules.building.elements import Room
 from app.modules.building.model import BuildingModel
 from app.modules.building.specification import Budget, BuildingSpecification, SpecRoomType
@@ -32,6 +33,21 @@ class RoomMinimum(ContextModel):
     min_width_m: float
 
 
+class DesignSystemBrief(ContextModel):
+    """What the model needs to choose a design system and stay inside its allow-lists."""
+
+    id: str
+    name: str
+    style_tags: tuple[str, ...]
+    interior_styles: tuple[str, ...]
+    roof_types: tuple[str, ...]
+    window_styles: tuple[str, ...]
+    facade_materials: tuple[str, ...]
+    facade_colors: tuple[str, ...]
+    custom_facade_colors: bool
+    defaults: dict[str, str | None]
+
+
 class GenerationContext(ContextModel):
     region_code: str
     currency: str
@@ -39,10 +55,36 @@ class GenerationContext(ContextModel):
     room_minimums: tuple[RoomMinimum, ...]
     # Share of the gross floor area the rooms may take (the rest is walls and circulation).
     max_room_share_of_gfa: float
+    # Usable (approved) design systems only (K3); empty = none may be selected.
+    design_systems: tuple[DesignSystemBrief, ...] = ()
+
+
+def _brief(d: DesignSystemSnapshot) -> DesignSystemBrief:
+    return DesignSystemBrief(
+        id=d.id,
+        name=d.name,
+        style_tags=tuple(s.value for s in d.style_tags),
+        interior_styles=tuple(s.value for s in d.interior_styles),
+        roof_types=tuple(r.value for r in d.roof.types),
+        window_styles=tuple(w.value for w in d.windows.styles),
+        facade_materials=tuple(m.value for m in d.facade.materials),
+        facade_colors=tuple(d.facade.colors),
+        custom_facade_colors=d.facade.custom_colors,
+        defaults={
+            "roof": d.roof.default.value,
+            "window_style": d.windows.default.value,
+            "facade_material": d.facade.default_material.value,
+            "facade_color": d.facade.default_color,
+        },
+    )
 
 
 def generation_context(
-    *, region_code: str, currency: str, profile: BuildingRulesProfile
+    *,
+    region_code: str,
+    currency: str,
+    profile: BuildingRulesProfile,
+    design_systems: DesignCatalog | None = None,
 ) -> GenerationContext:
     room_types = [t.value for t in SpecRoomType] + ["en_suite", "walk_in_closet"]
     return GenerationContext(
@@ -58,6 +100,9 @@ def generation_context(
             for t in room_types
         ),
         max_room_share_of_gfa=MAX_ROOM_SHARE_OF_GFA,
+        design_systems=tuple(
+            _brief(d) for d in (design_systems.available if design_systems else [])
+        ),
     )
 
 
