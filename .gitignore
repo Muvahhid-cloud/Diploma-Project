@@ -47,3 +47,7 @@ CLAUDE.md
 
 # Served copy of data/materials assets (scripts/sync-materials.mjs)
 apps/web/public/materials/
+
+# Agent notes written by `next dev` (local only)
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
