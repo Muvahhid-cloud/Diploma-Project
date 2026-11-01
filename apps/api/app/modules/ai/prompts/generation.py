@@ -60,7 +60,14 @@ houses unless the user says otherwise; leave `level` null when it does not matte
 - Bathroom counts include en-suites: "4 bedrooms, 3 bathrooms" can be a master bedroom with \
 features ["en_suite"] plus a bathroom requirement with count 2.
 - "Kitchen connected/open to the living room" -> living.open_to = ["kitchen"]. Open plan is \
-only possible between living, dining, kitchen and study. "Next to" -> adjacent_to.
+only possible between living, dining, kitchen and study. "Next to" -> adjacent_to. "Bedrooms \
+away from / separated from the living areas" -> each bedroom requirement's separate_from.
+- A size stated for one room ("a 40 m² living room") is that room's target_area_m2, never the \
+house's floor area. Record every stated room size, relation, facing wish, window wish and \
+footprint shape in requirements[] with its priority and the user's words, so each decision \
+can be traced back.
+- design.priorities only for what the user stresses (lots of daylight, privacy, garden \
+connection, compactness, open plan); leave it empty otherwise.
 - A "home office" is a study. Map only obvious equivalents; everything else the specification \
 cannot express (pool, sauna, basement, lift, home cinema, ...) goes into unsupported_requests.
 - Style words map only to the vocabulary above (e.g. "modern" may imply a flat roof and large \

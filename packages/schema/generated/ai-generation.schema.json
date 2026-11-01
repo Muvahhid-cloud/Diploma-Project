@@ -567,10 +567,11 @@
       "additionalProperties": false,
       "properties": {
         "schema_version": {
-          "default": "1.1.0",
+          "default": "1.2.0",
           "enum": [
             "1.0.0",
-            "1.1.0"
+            "1.1.0",
+            "1.2.0"
           ],
           "type": "string"
         },
@@ -631,6 +632,13 @@
           ],
           "default": null
         },
+        "requirements": {
+          "items": {
+            "$ref": "#/$defs/RequirementTrace"
+          },
+          "maxItems": 60,
+          "type": "array"
+        },
         "assumptions": {
           "items": {
             "$ref": "#/$defs/Assumption"
@@ -680,10 +688,40 @@
             }
           ],
           "default": null
+        },
+        "priorities": {
+          "items": {
+            "$ref": "#/$defs/DesignPriority"
+          },
+          "maxItems": 5,
+          "type": "array"
+        },
+        "footprint_shape": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FootprintShape"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "DesignIntent",
       "type": "object"
+    },
+    "DesignPriority": {
+      "description": "What the client cares about most (1.2.0). Each one raises the weight of the matching\ncriterion in candidate evaluation (building/evaluation.py) and can select layout patterns;\nnone of them is a hard requirement.",
+      "enum": [
+        "daylight",
+        "privacy",
+        "garden_connection",
+        "compactness",
+        "open_plan"
+      ],
+      "title": "DesignPriority",
+      "type": "string"
     },
     "FacadeMaterial": {
       "description": "High-level facade choice; the layout engine maps it to material-library ids.",
@@ -750,6 +788,18 @@
         "premium"
       ],
       "title": "FinishLevel",
+      "type": "string"
+    },
+    "FootprintShape": {
+      "description": "Footprint topology the client asks for (1.2.0). Recording a shape does not mean the\nengine can build it: what each shape needs and whether a generator exists is in\nbuilding/footprint.py CAPABILITIES (docs/3d-engine.md §16.12). An unsupported shape is\nstill recorded, so it is reported honestly instead of being dropped.",
+      "enum": [
+        "rectangular",
+        "l_shape",
+        "t_shape",
+        "u_shape",
+        "courtyard"
+      ],
+      "title": "FootprintShape",
       "type": "string"
     },
     "Garage": {
@@ -1099,6 +1149,15 @@
       "title": "ModelSummary",
       "type": "object"
     },
+    "Priority": {
+      "description": "MUST = mandatory: a candidate that misses it is rejected and generation fails with the\nreason rather than relaxing it. SHOULD = preference: scored, reported when missed.",
+      "enum": [
+        "must",
+        "should"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
     "RequirementCheck": {
       "additionalProperties": false,
       "properties": {
@@ -1126,6 +1185,50 @@
         "met"
       ],
       "title": "RequirementCheck",
+      "type": "object"
+    },
+    "RequirementOrigin": {
+      "enum": [
+        "user_text",
+        "form",
+        "assumption"
+      ],
+      "title": "RequirementOrigin",
+      "type": "string"
+    },
+    "RequirementTrace": {
+      "additionalProperties": false,
+      "description": "Priority and origin of one spec value (1.2.0), so each design decision can be traced\nback to the request. `path` is a JSON pointer to a value that exists in the spec: a room's\ntarget_area_m2, an adjacent_to/open_to/separate_from entry, faces, or design.windows.",
+      "properties": {
+        "path": {
+          "maxLength": 200,
+          "pattern": "^(/[a-z0-9_]+)+$",
+          "type": "string"
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority"
+        },
+        "origin": {
+          "$ref": "#/$defs/RequirementOrigin"
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "RequirementTrace",
       "type": "object"
     },
     "RoofSpec": {
@@ -1226,6 +1329,19 @@
           ],
           "default": null
         },
+        "max_area_m2": {
+          "anyOf": [
+            {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "level": {
           "anyOf": [
             {
@@ -1276,6 +1392,16 @@
             }
           ],
           "default": null
+        },
+        "separate_from": {
+          "items": {
+            "maxLength": 40,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "type": "array"
         }
       },
       "required": [

@@ -11,7 +11,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.modules.building.enums import RoomType
 from app.modules.building.specification import FacadeMaterial, WindowStyle
 
-ENGINE_VERSION = "layout@1.3.0"  # 1.3.0: BuildingModel 1.2.0; design systems and design intent
+ENGINE_VERSION = "layout@1.7.0"  # 1.7.0: footprint shapes (V1.3): T-shaped single-storey
+# footprints, depth bars for L/T main bars (small or long houses), shapes without a generator
+# refused with the reason. Rectangular geometry unchanged (fingerprints of specs 01-10 as 1.6.0).
+# 1.6.0: L layout quality (V1.2): the wing's last room takes
+# the gallery's end, the main corridor's dead ends go to rooms (joining e.g. kitchen and dining),
+# garden-sized L band splits, the wing on either side of a garage, more L footprints evaluated
+# when an L is requested. Rectangular geometry unchanged (fingerprints of specs 01-10 as 1.5.0).
+# 1.5.0: L-shaped single-storey footprints (V1.1); rectangular
+# geometry unchanged (fingerprints of reference specs 01-10 equal to 1.4.0).
+# 1.4.0: Design Intelligence V1 — requirement priorities
+# (MUST/SHOULD), permissible area ranges, separations, layout patterns (soft), every valid built
+# candidate evaluated against the spec, bounded repair. Generated models change (golden files).
+# 1.3.0: BuildingModel 1.2.0; design systems and design intent
 # (facade color, facade-specific window sizes, room orientation; K3). Specs without them build
 # the same geometry as 1.2.0 (geometry fingerprints unchanged).
 # 1.2.0: stair cores on the facade fit their flights (K2.5)
@@ -68,7 +80,30 @@ class LayoutConfig(_Config):
     band_split_offsets: tuple[float, ...] = (-0.6, -0.3, 0.0, 0.3, 0.6)
     core_positions: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 1.0)
     variants_per_skeleton: int = 3
-    candidates_to_build: int = 6
+    # L topology (single storey, docs/3d-engine.md §16.10): main bar width/depth ratios, share
+    # of the floor area in the wing, band splits, and the shape limits of a real L.
+    l_main_aspects: tuple[float, ...] = (1.45, 1.8, 2.2)
+    l_wing_area_shares: tuple[float, ...] = (0.2, 0.3, 0.4)
+    l_band_split_offsets: tuple[float, ...] = (-0.3, 0.0, 0.3)
+    l_wing_min_length: float = 3.0  # how far the wing reaches beyond the main bar, at least
+    l_min_garden_frontage: float = 4.0  # garden facade of the main bar beside the wing
+    # Deepest garden band a garden-sized L split may ask for (V1.2, planner.garden_demands).
+    l_garden_band_max_depth: float = 6.0
+    # Depth bars (V1.3): main-bar depths above the shallowest double-loaded bar, and wing shares,
+    # for houses whose ratio bars are too shallow (small or long L/T footprints).
+    l_depth_steps: tuple[float, ...] = (0.0, 0.6, 1.2)
+    l_depth_bar_shares: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5)
+    t_min_side_frontage: float = 4.0  # T: garden facade on each side of the wing
+    t_min_wing_facade: float = 1.2  # T: a habitable wing room's reach beyond the garden facade
+    # T main bars are longer than L ones: the wing takes the middle of the garden facade.
+    t_main_aspects: tuple[float, ...] = (2.2, 2.6, 3.0)
+    # Preferred wing length (beyond the main bar) / main bar width: a balanced L (scored).
+    l_wing_ratio: tuple[float, float] = (0.4, 0.9)
+    candidates_to_build: int = 6  # built, validated and evaluated; the best one wins
+    # L footprints built when the user asked for an L (V1.2): distinct L shapes compared on
+    # the evaluation; rectangular alternatives keep their share of candidates_to_build.
+    l_requested_builds: int = 5
+    repair_candidates_to_build: int = 18  # extra builds when none meets every MUST requirement
     circulation_share: float = 0.22  # GFA overhead estimate when no GFA is specified
 
     # Stairs

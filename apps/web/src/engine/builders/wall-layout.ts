@@ -41,6 +41,15 @@ export function computeWallJoins(walls: readonly Wall[]): Map<string, WallJoin> 
           continue;
         }
         if (collinear(axis, oa)) continue;
+        // Inside corner of an L footprint: an interior wall continues the line of an exterior
+        // wall through the corner. The exterior walls close the corner between themselves
+        // (pinwheel) and ignore the interior wall; the interior wall stops at the exterior
+        // wall's inner face, like a T-junction. (Rectangular plans have no such corner.)
+        if (isExterior(w) && !isExterior(o)) continue;
+        if (!isExterior(w) && isExterior(o)) {
+          candidates.push(-half);
+          continue;
+        }
         const extend = end !== oEnd ? end === "end" : w.id < o.id;
         candidates.push(extend ? half : -half);
       }
@@ -50,6 +59,10 @@ export function computeWallJoins(walls: readonly Wall[]): Map<string, WallJoin> 
     joins.set(w.id, join);
   }
   return joins;
+}
+
+function isExterior(w: Wall): boolean {
+  return w.properties.wall_kind === "exterior";
 }
 
 function near(a: P2, b: P2): boolean {

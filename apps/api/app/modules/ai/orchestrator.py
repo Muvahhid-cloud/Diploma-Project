@@ -50,6 +50,8 @@ logger = logging.getLogger(__name__)
 
 LAYOUT_MESSAGES = {
     "LAYOUT_INFEASIBLE": "The requested requirements could not produce a valid layout.",
+    "LAYOUT_REQUIREMENTS_UNMET": "No layout meets every mandatory requirement of this request; "
+    "none of them was relaxed.",
     "LAYOUT_INVALID": "The layout engine could not produce a valid building for this request.",
     "MODEL_INVALID": "The layout engine could not produce a valid building for this request.",
 }

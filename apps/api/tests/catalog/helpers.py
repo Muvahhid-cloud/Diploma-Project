@@ -22,6 +22,7 @@ GENERIC_PACK = "buildai-generic-types@1"
 GENERIC_DIR = "packs/buildai-generic-types.v1"
 GENERIC_COMPONENTS = f"{GENERIC_DIR}/components.yaml"
 DESIGN_PACK = "buildai-design-systems@1"
+PATTERN_PACK = "buildai-layout-patterns@1"
 DESIGN_DIR = "packs/buildai-design-systems.v1"
 DESIGN_COMPONENTS = f"{DESIGN_DIR}/design-systems.yaml"
 COMPONENT_KINDS = ("families", "types", "assemblies", "role_mappings", "design_systems")

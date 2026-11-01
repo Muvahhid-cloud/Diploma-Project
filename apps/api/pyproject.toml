@@ -139,6 +139,7 @@ source_modules = [
     "app.modules.ai",
     "app.modules.jobs",
     "app.modules.demo",
+    "app.modules.editing",
     "app.modules.health",
 ]
 forbidden_modules = ["app.modules.catalog"]

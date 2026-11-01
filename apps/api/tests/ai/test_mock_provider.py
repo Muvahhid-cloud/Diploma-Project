@@ -93,7 +93,29 @@ def test_demo_prompt_is_interpreted_faithfully() -> None:
     assert d.conflicts == [] and d.unsupported_requests == []
 
 
-@pytest.mark.parametrize("prompt", SPEC_PROMPTS)
+# Design Intelligence V1 (spec 1.2.0): room sizes, relations, priorities, plots. The
+# deliberately conflicting benchmark request is not here (it must fail, see tests/evals).
+INTENT_PROMPTS = [
+    "I want a 40 m2 living room in a two-storey 220 m2 house with 3 bedrooms",
+    "Modern two-storey house of 220 m2 with 4 bedrooms: a 40 m2 living room, a kitchen of 16 m2 "
+    "and a master bedroom of at least 20 m2.",
+    "Two-storey 180 m2 house with 3 bedrooms; the kitchen must be next to the dining room",
+    "Single-storey house of 160 m2 with 3 bedrooms and 2 bathrooms. The bedrooms must be "
+    "separated from the living spaces for privacy.",
+    "Narrow urban plot 8 m wide and 30 m deep: a two-storey townhouse of 140 m2 with 3 bedrooms "
+    "and the kitchen next to the dining room.",
+    "Two-storey family house of 180 m2 with 3 bedrooms and an open-plan living, dining and "
+    "kitchen area.",
+    "Compact single-storey family home of 95 m2 with 2 bedrooms, 1 bathroom and an open "
+    "kitchen-living room. Space-efficient circulation is important.",
+    # V1.1: L-shaped footprints
+    "A single-storey L-shaped house of 170 m2 with 3 bedrooms and 2 bathrooms.",
+    "L-shaped single-storey house of 160 m2 with 3 bedrooms; the kitchen must be next to the "
+    "dining room.",
+]
+
+
+@pytest.mark.parametrize("prompt", SPEC_PROMPTS + INTENT_PROMPTS)
 def test_mock_specs_validate_and_lay_out(prompt: str) -> None:
     """NL -> mock -> spec -> rules -> layout -> valid model for every supported prompt."""
     d = draft(prompt)

@@ -79,6 +79,39 @@ export type RoomFeature = "en_suite" | "walk_in_closet";
  * via the `definition` "FacadeSide".
  */
 export type FacadeSide = "front" | "rear" | "left" | "right";
+/**
+ * What the client cares about most (1.2.0). Each one raises the weight of the matching
+ * criterion in candidate evaluation (building/evaluation.py) and can select layout patterns;
+ * none of them is a hard requirement.
+ *
+ * This interface was referenced by `AIGenerationContracts`'s JSON-Schema
+ * via the `definition` "DesignPriority".
+ */
+export type DesignPriority =
+  "daylight" | "privacy" | "garden_connection" | "compactness" | "open_plan";
+/**
+ * Footprint topology the client asks for (1.2.0). Recording a shape does not mean the
+ * engine can build it: what each shape needs and whether a generator exists is in
+ * building/footprint.py CAPABILITIES (docs/3d-engine.md §16.12). An unsupported shape is
+ * still recorded, so it is reported honestly instead of being dropped.
+ *
+ * This interface was referenced by `AIGenerationContracts`'s JSON-Schema
+ * via the `definition` "FootprintShape".
+ */
+export type FootprintShape = "rectangular" | "l_shape" | "t_shape" | "u_shape" | "courtyard";
+/**
+ * MUST = mandatory: a candidate that misses it is rejected and generation fails with the
+ * reason rather than relaxing it. SHOULD = preference: scored, reported when missed.
+ *
+ * This interface was referenced by `AIGenerationContracts`'s JSON-Schema
+ * via the `definition` "Priority".
+ */
+export type Priority = "must" | "should";
+/**
+ * This interface was referenced by `AIGenerationContracts`'s JSON-Schema
+ * via the `definition` "RequirementOrigin".
+ */
+export type RequirementOrigin = "user_text" | "form" | "assumption";
 
 export interface AIGenerationContracts {
   [k: string]: unknown;
@@ -249,7 +282,7 @@ export interface AIGenerationOut {
  * via the `definition` "BuildingSpecification".
  */
 export interface BuildingSpecification {
-  schema_version?: "1.0.0" | "1.1.0";
+  schema_version?: "1.0.0" | "1.1.0" | "1.2.0";
   building_type?: "single_family_house";
   name: string;
   description?: string;
@@ -264,6 +297,10 @@ export interface BuildingSpecification {
   features?: Features;
   design?: DesignIntent;
   budget?: Budget | null;
+  /**
+   * @maxItems 60
+   */
+  requirements?: RequirementTrace[];
   /**
    * @maxItems 50
    */
@@ -330,6 +367,7 @@ export interface RoomRequirement {
   count?: number;
   target_area_m2?: number | null;
   min_area_m2?: number | null;
+  max_area_m2?: number | null;
   level?: number | null;
   /**
    * @maxItems 8
@@ -344,6 +382,10 @@ export interface RoomRequirement {
    */
   features?: RoomFeature[];
   faces?: FacadeSide | null;
+  /**
+   * @maxItems 8
+   */
+  separate_from?: string[];
 }
 /**
  * This interface was referenced by `AIGenerationContracts`'s JSON-Schema
@@ -395,6 +437,11 @@ export interface Terrace {
 export interface DesignIntent {
   facade_color?: string | null;
   windows?: WindowIntent | null;
+  /**
+   * @maxItems 5
+   */
+  priorities?: DesignPriority[];
+  footprint_shape?: FootprintShape | null;
 }
 /**
  * Where the emphasised (large/panoramic) windows go. Facades not listed keep
@@ -414,6 +461,20 @@ export interface WindowIntent {
    * @maxItems 3
    */
   excluded_facades?: FacadeSide[];
+}
+/**
+ * Priority and origin of one spec value (1.2.0), so each design decision can be traced
+ * back to the request. `path` is a JSON pointer to a value that exists in the spec: a room's
+ * target_area_m2, an adjacent_to/open_to/separate_from entry, faces, or design.windows.
+ *
+ * This interface was referenced by `AIGenerationContracts`'s JSON-Schema
+ * via the `definition` "RequirementTrace".
+ */
+export interface RequirementTrace {
+  path: string;
+  priority?: Priority;
+  origin?: RequirementOrigin;
+  quote?: string | null;
 }
 /**
  * Something that was inferred rather than stated (shown to the user).

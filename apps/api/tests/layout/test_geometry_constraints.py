@@ -13,6 +13,7 @@ from app.modules.building.elements import Door, Stair, Wall
 from app.modules.building.fingerprint import geometry_sha256
 from app.modules.building.geometry import OVERLAP_AREA_TOLERANCE, stair_region, wall_frame
 from app.modules.building.geometry_checks import check_geometry
+from app.modules.building.primitives import EPS
 from app.modules.building.types import TypeSet
 from app.modules.building.validation import validate_model
 from app.modules.layout.config import DEFAULT_CONFIG
@@ -81,7 +82,8 @@ def test_facade_core_specs_now_have_their_core_on_the_facade() -> None:
         xs = [p[0] for s in stairs for p in stair_region(s)]
         width = reference(name).metrics.footprint_width_m  # type: ignore[union-attr]
         near = min(min(xs), width - max(xs))
-        assert near == pytest.approx(0.15 + 0.045), name  # exterior face + clearance
+        # exterior face + clearance, compared with the model tolerance (CLAUDE.md rule 8)
+        assert near == pytest.approx(0.15 + 0.045, abs=EPS), name
 
 
 # --- skeleton constraint ------------------------------------------------------------------------

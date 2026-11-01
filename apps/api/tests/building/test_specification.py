@@ -17,7 +17,7 @@ def base() -> dict[str, Any]:
 
 def test_defaults_are_applied() -> None:
     s = BuildingSpecification.model_validate(base())
-    assert s.schema_version == "1.1.0"
+    assert s.schema_version == "1.2.0"
     assert s.building_type == "single_family_house"
     assert s.targets.floor_to_floor_height_m == 3.0
     assert s.targets.gross_floor_area_m2 is None
@@ -28,6 +28,9 @@ def test_defaults_are_applied() -> None:
     assert s.style.design_system is None
     assert s.design.facade_color is None and s.design.windows is None
     assert s.rooms[0].faces is None
+    # 1.2.0 intent (priorities, area ranges, separations, traces) is optional too.
+    assert s.design.priorities == [] and s.requirements == []
+    assert s.rooms[0].max_area_m2 is None and s.rooms[0].separate_from == []
 
 
 def test_1_0_0_specifications_stay_valid_and_unchanged() -> None:
@@ -72,7 +75,7 @@ def test_invalid_design_intent_is_rejected(design: dict[str, Any]) -> None:
 
 def test_all_reference_specs_parse() -> None:
     paths = sorted(SPECS_DIR.glob("*.spec.json"))
-    assert len(paths) == 10
+    assert len(paths) == 12  # 11: the L-shaped bungalow (V1.1); 12: the T-shaped bungalow (1.7.0)
     for p in paths:
         BuildingSpecification.model_validate_json(p.read_text(encoding="utf-8"))
 

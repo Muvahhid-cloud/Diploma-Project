@@ -18,6 +18,7 @@ from app.modules.catalog.components import (
     RoleMapping,
     TypeRecord,
 )
+from app.modules.catalog.patterns_schema import PatternRecord
 from app.modules.catalog.provenance import Source, Status, Usage
 from app.modules.catalog.schemas import (
     DrawingProfile,
@@ -47,6 +48,7 @@ class LoadedPack:
     assemblies: tuple[AssemblyRecord, ...] = ()
     role_mappings: tuple[RoleMapping, ...] = ()
     design_systems: tuple[DesignSystemRecord, ...] = ()  # K3
+    patterns: tuple[PatternRecord, ...] = ()  # layout patterns (Design Intelligence V1)
     extra_files: tuple[str, ...] = ()  # YAML files present but not listed in the manifest
 
     @property
@@ -141,6 +143,9 @@ class KnowledgeRegistry:
     def design_systems(self) -> dict[str, DesignSystemRecord]:
         return {d.id: d for p in self.packs.values() for d in p.design_systems}
 
+    def layout_patterns(self) -> dict[str, PatternRecord]:
+        return {r.id: r for p in self.packs.values() for r in p.patterns}
+
     def pack_of(self, record_id: str) -> str | None:
         """The pack ref that defines a component record (family/type/assembly/mapping/design
         system)."""
@@ -151,6 +156,7 @@ class KnowledgeRegistry:
                 *(a.id for a in pack.assemblies),
                 *(m.id for m in pack.role_mappings),
                 *(d.id for d in pack.design_systems),
+                *(r.id for r in pack.patterns),
             ]
             if record_id in ids:
                 return pack.ref

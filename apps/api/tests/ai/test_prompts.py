@@ -38,7 +38,7 @@ def test_system_prompt_describes_the_supported_design_intent() -> None:
     """K3: the vocabulary is generated from the facade enum, synonym table and color palette —
     only capabilities the engine actually implements."""
     text = system_prompt()
-    assert PROMPT_VERSION == "building-generation@2"
+    assert PROMPT_VERSION == "building-generation@5"
     for side in FacadeSide:
         assert side.value in text
     for word in FACADE_SYNONYMS:

@@ -4,7 +4,10 @@ AI generation (Phase 3). It never interprets language and contains no layout log
     selected design system (K3): approved snapshot + its role mapping's type set, or
     approved component types (catalog resolver, K2; none approved = untyped)
       -> type set vs rules profile (invalid types are refused, never resized)
-      -> layout engine (tier-3 feasibility + model invariants, in a worker thread)
+      -> layout patterns (Design Intelligence V1: soft heuristics, drafts included and
+         reported with their status; catalog.patterns)
+      -> layout engine (tier-3 feasibility + model invariants + evaluation of the built
+         candidates against the spec, in a worker thread)
       -> final model validation (errors abort) -> rules findings -> immutable version
 """
 
@@ -23,13 +26,20 @@ from app.modules.building.specification import BuildingSpecification
 from app.modules.building.validation import validate_model
 from app.modules.catalog.design_systems import design_catalog, resolve_design
 from app.modules.catalog.loader import load_knowledge
+from app.modules.catalog.patterns import pattern_library
 from app.modules.catalog.resolver import resolve_type_set
 from app.modules.layout.engine import LayoutError, LayoutResult, generate_layout
 from app.modules.projects.models import Project
 from app.modules.rules.model_checks import check_model
 from app.modules.rules.type_checks import check_type_set
 from app.modules.versions.models import ProjectVersion
-from app.modules.versions.schemas import GenerationProvenance, GenerationReport
+from app.modules.versions.schemas import (
+    CandidateOut,
+    GenerationProvenance,
+    GenerationReport,
+    PatternUse,
+    TopologyOut,
+)
 from app.modules.versions.service import VersionService
 from app.shared.data_files import material_ids, rules_profile
 
@@ -77,7 +87,8 @@ async def layout_and_save(
 ) -> PipelineResult:
     """Run the layout engine for `spec` and store the result as the project's new version.
 
-    Raises LayoutError (LAYOUT_INFEASIBLE / LAYOUT_INVALID / MODEL_INVALID). Commits."""
+    Raises LayoutError (LAYOUT_INFEASIBLE / LAYOUT_REQUIREMENTS_UNMET / LAYOUT_INVALID /
+    MODEL_INVALID). Commits."""
     data_dir = get_settings().data_dir
     project_id: uuid.UUID = project.id
     profile = rules_profile(data_dir, project.rules_profile_id)
@@ -123,6 +134,7 @@ async def layout_and_save(
         material_ids=materials,
         type_set=type_set,
         design_system=design_system,
+        patterns=pattern_library(registry),
     )
     await on_stage("checking")
     model_errors = errors(validate_model(result.model, material_ids=materials))
@@ -136,6 +148,10 @@ async def layout_and_save(
         notes=result.notes,
         metrics=asdict(result.metrics) if result.metrics else {},
         generation=provenance,
+        evaluation=result.evaluation,
+        patterns=[PatternUse(**asdict(p)) for p in result.patterns],
+        candidates=[CandidateOut(**asdict(c)) for c in result.candidates],
+        topology=TopologyOut(**asdict(result.topology)) if result.topology else None,
     )
     await on_stage("saving")
     version = await VersionService(session).create(

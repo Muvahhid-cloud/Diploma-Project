@@ -65,7 +65,7 @@ from app.modules.building.enums import (
     WallKind,
     WindowKind,
 )
-from app.modules.building.facades import PLAN_SIDE
+from app.modules.building.facades import PLAN_SIDE, facade_of_normal
 from app.modules.building.geometry import Point, segment_overlap_length
 from app.modules.building.hosting import free_intervals, junction_zones
 from app.modules.building.model import (
@@ -88,7 +88,7 @@ from app.modules.building.types import (
 )
 from app.modules.layout.config import LayoutConfig
 from app.modules.layout.furnish import furnish
-from app.modules.layout.plan import Rect, Region, Segment, lane_faces, rnd
+from app.modules.layout.plan import Rect, Region, Segment, Skeleton, lane_faces, rnd
 from app.modules.layout.program import HABITABLE, WET
 from app.modules.layout.regions import (
     PlanLayout,
@@ -313,29 +313,78 @@ def _rel(kind: RelationshipKind, target: uuid.UUID) -> Relationship:
 # --- walls --------------------------------------------------------------------------------------
 
 
+def envelope(sk: Skeleton, pitched: bool) -> list[tuple[str, Point, Point, str]]:
+    """Exterior wall loop of one storey, counter-clockwise: (key suffix, start, end, roof).
+
+    Rectangle: S, E, N, W. L (docs/3d-engine.md §16.10): the main bar's walls keep their keys
+    (S, E, N = the garden wall beside the wing, W/E = the outer wall below the wing) and the
+    wing adds `wing:*` walls; the outer side is split where the wing starts so each wall
+    belongs to one volume and supports one roof (a pitched L has a main and a wing roof).
+    T (§16.12): S, E, then the garden wall east of the wing (N:E), the wing (stem) walls,
+    the garden wall west of it (N:W), W - eight walls, two inside corners."""
+    W, D = sk.W, sk.D  # noqa: N806 - plan dimension names, as on Skeleton
+    if not sk.has_wing:
+        corners = [(0.0, 0.0), (W, 0.0), (W, D), (0.0, D)]
+        return [
+            (side, corners[i], corners[(i + 1) % 4], "roof:main") for i, side in enumerate("SENW")
+        ]
+    wing_roof = "roof:wing" if pitched else "roof:main"
+    top = sk.depth_total
+    x0, x1 = sk.wing_x
+    if sk.topology == "t":
+        return [
+            ("S", (0.0, 0.0), (W, 0.0), "roof:main"),
+            ("E", (W, 0.0), (W, D), "roof:main"),
+            ("N:E", (W, D), (x1, D), "roof:main"),
+            ("wing:E", (x1, D), (x1, top), wing_roof),
+            ("wing:N", (x1, top), (x0, top), wing_roof),
+            ("wing:W", (x0, top), (x0, D), wing_roof),
+            ("N:W", (x0, D), (0.0, D), "roof:main"),
+            ("W", (0.0, D), (0.0, 0.0), "roof:main"),
+        ]
+    if sk.wing_side == "west":
+        return [
+            ("S", (0.0, 0.0), (W, 0.0), "roof:main"),
+            ("E", (W, 0.0), (W, D), "roof:main"),
+            ("N", (W, D), (x1, D), "roof:main"),
+            ("wing:E", (x1, D), (x1, top), wing_roof),
+            ("wing:N", (x1, top), (0.0, top), wing_roof),
+            ("wing:W", (0.0, top), (0.0, D), wing_roof),
+            ("W", (0.0, D), (0.0, 0.0), "roof:main"),
+        ]
+    return [
+        ("S", (0.0, 0.0), (W, 0.0), "roof:main"),
+        ("E", (W, 0.0), (W, D), "roof:main"),
+        ("wing:E", (W, D), (W, top), wing_roof),
+        ("wing:N", (W, top), (x0, top), wing_roof),
+        ("wing:W", (x0, top), (x0, D), wing_roof),
+        ("N", (x0, D), (0.0, D), "roof:main"),
+        ("W", (0.0, D), (0.0, 0.0), "roof:main"),
+    ]
+
+
 def _walls(ctx: _Context) -> None:
     sk, cfg = ctx.plan.skeleton, ctx.config
     facade = cfg.facade_materials[ctx.spec.style.facade_material]
     color = ctx.facade_color  # appearance only: the facade material is unchanged
     finishes = finishes_of(ctx.system)
     top = sk.storeys - 1
+    pitched = ctx.spec.style.roof.type != RoofType.FLAT
     for lv in range(sk.storeys):
-        corners = [(0.0, 0.0), (sk.W, 0.0), (sk.W, sk.D), (0.0, sk.D)]
-        supports = [f"slab:L{lv + 1}"] if lv < top else ["roof:main"]
-        for i, side in enumerate("SENW"):
+        for side, start, end, roof in envelope(sk, pitched):
             ctx.walls.append(
                 WallPlan(
                     key=f"wall:ext:L{lv}:{side}",
                     name=ctx.next_name("W", lv),
                     level=lv,
-                    start=corners[i],
-                    end=corners[(i + 1) % 4],
+                    start=start,
+                    end=end,
                     kind=WallKind.EXTERIOR,
                     thickness=cfg.exterior_wall_thickness,
                     material=facade,
                     left=finishes.interior_wall,
                     right=facade,
-                    supports=list(supports),
+                    supports=[f"slab:L{lv + 1}"] if lv < top else [roof],
                     right_color=color,
                 )
             )
@@ -374,7 +423,7 @@ def _walls(ctx: _Context) -> None:
         level = ctx.plan.levels[lv]
         types = {r.key: r.room_type for r in level.regions}
         seen: dict[str, int] = {}
-        for run in derive_interior_walls(level, sk.W, sk.D):
+        for run in derive_interior_walls(level, sk.W, sk.depth_total):
             lo_key, hi_key, _ = max(run.pieces, key=lambda p: (p[2], p[0], p[1]))
             base = f"wall:L{lv}:{lo_key}|{hi_key}"
             seen[base] = seen.get(base, 0) + 1
@@ -423,10 +472,6 @@ def _wall_on(ctx: _Context, level: int, seg: Segment) -> WallPlan:
         if w.level == level and w.covers(seg):
             return w
     raise BuildError(f"No wall along {seg} on floor {level + 1}")
-
-
-def _facade_wall(ctx: _Context, level: int, side: str) -> WallPlan:
-    return next(w for w in ctx.walls if w.key == f"wall:ext:L{level}:{side}")
 
 
 # --- openings -----------------------------------------------------------------------------------
@@ -654,42 +699,48 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
 
 
 def _facade_segments(ctx: _Context, region: Region) -> list[tuple[str, Segment]]:
+    """Stretches of `region`'s boundary on the house's exterior walls, per wall, labelled with
+    the plan side the wall faces (S/N/W/E, from its outward normal). Each segment lies on one
+    exterior wall, so an opening placed in it has exactly one host."""
     sk = ctx.plan.skeleton
     garage = ctx.plan.garage
-    out: dict[str, list[tuple[float, float]]] = {"S": [], "N": [], "W": [], "E": []}
     if not region.inside:
         return []
-    for r in region.rects:
-        if abs(r.y0) < 1e-6:
-            out["S"].append((r.x0, r.x1))
-        if abs(r.y1 - sk.D) < 1e-6:
-            out["N"].append((r.x0, r.x1))
-        for side, x in (("W", r.x0), ("E", r.x1)):
-            limit = 0.0 if side == "W" else sk.W
-            if abs(x - limit) > 1e-6:
-                continue
-            lo, hi = r.y0, r.y1
-            blocked = (
-                region.level == 0
-                and garage is not None
-                and sk.garage_side == ("west" if side == "W" else "east")
-            )
-            if blocked and garage is not None:
-                lo = max(lo, garage.y1)
-            if hi - lo > 1e-6:
-                out[side].append((lo, hi))
     result: list[tuple[str, Segment]] = []
-    coords = {"S": 0.0, "N": sk.D, "W": 0.0, "E": sk.W}
-    for side, spans in out.items():
+    for wall in ctx.walls:
+        if wall.level != region.level or not wall.key.startswith("wall:ext:"):
+            continue
+        (sx, sy), (ex, ey) = wall.start, wall.end
+        side = PLAN_SIDE[facade_of_normal(ey - sy, sx - ex)]
+        orientation: Literal["h", "v"] = "h" if wall.horizontal else "v"
+        w0, w1 = sorted((sx, ex) if wall.horizontal else (sy, ey))
+        spans: list[tuple[float, float]] = []
+        for r in region.rects:
+            if wall.horizontal:
+                on = abs(r.y0 - wall.coord) < 1e-6 or abs(r.y1 - wall.coord) < 1e-6
+                lo, hi = max(r.x0, w0), min(r.x1, w1)
+            else:
+                on = abs(r.x0 - wall.coord) < 1e-6 or abs(r.x1 - wall.coord) < 1e-6
+                lo, hi = max(r.y0, w0), min(r.y1, w1)
+                blocked = (
+                    region.level == 0
+                    and garage is not None
+                    and sk.garage_side == ("west" if side == "W" else "east")
+                    and abs(wall.coord - (0.0 if side == "W" else sk.W)) < 1e-6
+                )
+                if blocked and garage is not None:
+                    lo = max(lo, garage.y1)
+            if on and hi - lo > 1e-6:
+                spans.append((lo, hi))
         merged: list[list[float]] = []
         for a, b in sorted(spans):
             if merged and abs(merged[-1][1] - a) < 1e-6:
                 merged[-1][1] = b
             else:
                 merged.append([a, b])
-        for a, b in merged:
-            result.append((side, Segment("h" if side in "SN" else "v", coords[side], a, b)))
-    return result
+        result += [(side, Segment(orientation, wall.coord, a, b)) for a, b in merged]
+    order = "SNWE"
+    return sorted(result, key=lambda s: (order.index(s[0]), s[1].coord, s[1].a0))
 
 
 def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
@@ -727,7 +778,7 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
         role: str,
         size_class: WindowStyle | None = None,
     ) -> float:
-        wall = _facade_wall(ctx, level, side)
+        wall = _wall_on(ctx, level, seg)
         width = rnd(width)
         if height <= 0 or sill + height > wall_h + 1e-6:  # no room under the wall top
             return 0.0
@@ -1254,6 +1305,11 @@ def _slabs(ctx: _Context, levels: list[Level]) -> list[Element]:
     house = Rect(-half, -half, rnd(sk.W + half), rnd(sk.D + half))
     out: list[Element] = []
     ground = [house]
+    if sk.has_wing:
+        x0, x1 = sk.wing_x
+        ground.append(
+            Rect(rnd(x0 - half), rnd(sk.D - half), rnd(x1 + half), rnd(sk.depth_total + half))
+        )
     if ctx.plan.garage is not None:
         g = ctx.plan.garage
         ground.append(Rect(rnd(g.x0 - half), -half, rnd(g.x1 + half), rnd(g.y1 + half)))
@@ -1468,6 +1524,16 @@ def _roofs(ctx: _Context, levels: list[Level]) -> list[Element]:
             (sk.W + half, sk.D + half),
             (-half, sk.D + half),
         ]
+        if sk.has_wing:  # one flat roof over the whole L or T (outer wall faces)
+            x0, x1 = sk.wing_x
+            outline = _union_outline(
+                [
+                    Rect(-half, -half, rnd(sk.W + half), rnd(sk.D + half)),
+                    Rect(
+                        rnd(x0 - half), rnd(sk.D - half), rnd(x1 + half), rnd(sk.depth_total + half)
+                    ),
+                ]
+            )
         out.append(
             _roof(
                 ctx,
@@ -1504,6 +1570,27 @@ def _roofs(ctx: _Context, levels: list[Level]) -> list[Element]:
                 0.0,
             )
         )
+        if sk.has_wing:
+            # The wing's own roof over its walls; on the main bar's side it overhangs by the
+            # same amount, under the main roof's garden eave (no valley geometry in v1).
+            x0, x1 = sk.wing_x
+            wy0, wy1 = rnd(sk.D - over), rnd(sk.depth_total + e)
+            wing = [(x0 - e, wy0), (x1 + e, wy0), (x1 + e, wy1), (x0 - e, wy1)]
+            out.append(
+                _roof(
+                    ctx,
+                    "roof:wing",
+                    "Wing roof",
+                    top,
+                    wing,
+                    eave_z,
+                    roof_spec.type,
+                    pitch,
+                    over,
+                    "y" if wy1 - wy0 >= x1 - x0 + 2 * e else "x",
+                    0.0,
+                )
+            )
     if ctx.plan.garage is not None:
         g = ctx.plan.garage
         x0, x1 = (g.x0 - half, -half) if sk.garage_side == "west" else (sk.W + half, g.x1 + half)

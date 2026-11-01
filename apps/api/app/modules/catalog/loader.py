@@ -24,6 +24,7 @@ from app.modules.building.issues import Issue, errors, pointer
 from app.modules.catalog.components import ComponentsDocument
 from app.modules.catalog.integrity import check_registry
 from app.modules.catalog.lock import PACKS_DIR, REGIONS_DIR, SOURCES_DIR, verify_lock
+from app.modules.catalog.patterns_schema import PatternsDocument
 from app.modules.catalog.provenance import Source
 from app.modules.catalog.registry import KnowledgeRegistry, LoadedPack
 from app.modules.catalog.schemas import (
@@ -120,6 +121,10 @@ def _load_pack(knowledge_dir: Path, pack_dir: Path, issues: list[Issue]) -> Load
             assemblies += comp.assemblies
             mappings += comp.role_mappings
             designs += comp.design_systems
+    patterns = []
+    for name in c.patterns:
+        pat = _parse(PatternsDocument, pack_dir / name, f"{rel_dir}/{name}", issues)
+        patterns += pat.patterns if pat else []
     present = {f.relative_to(pack_dir).as_posix() for f in pack_dir.rglob("*") if f.is_file()}
     return LoadedPack(
         manifest=manifest,
@@ -135,6 +140,7 @@ def _load_pack(knowledge_dir: Path, pack_dir: Path, issues: list[Issue]) -> Load
         assemblies=tuple(assemblies),
         role_mappings=tuple(mappings),
         design_systems=tuple(designs),
+        patterns=tuple(patterns),
         extra_files=tuple(sorted(present - listed)),
     )
 

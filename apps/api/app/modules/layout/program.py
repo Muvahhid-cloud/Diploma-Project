@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 
 from app.modules.building.enums import RoomType, Zone
+from app.modules.building.intent import area_range, requirements
 from app.modules.building.specification import BuildingSpecification, RoomFeature
 from app.modules.layout.config import LayoutConfig
 from app.modules.rules.profile import BuildingRulesProfile
@@ -68,6 +69,10 @@ class RoomRequest:
     level: int | None  # fixed by the spec, else None
     serves: str | None = None  # en-suite / walk-in closet: instance key of its bedroom
     attached: list[str] = field(default_factory=list)  # keys of rooms reached through this one
+    # Permissible range of an explicit target (building/intent.py) and whether it is a MUST.
+    area_low: float | None = None
+    area_high: float | None = None
+    area_must: bool = False
 
     @property
     def tuckable(self) -> bool:
@@ -79,6 +84,9 @@ class Program:
     rooms: list[RoomRequest]
     adjacency: list[tuple[str, str]]  # spec-key pairs that should share a wall
     open_plan: list[tuple[str, str]]  # spec-key pairs that should be open to each other
+    separate: list[tuple[str, str]] = field(default_factory=list)  # must not share a wall
+    # (kind, a, b) of pairs marked MUST; kind is "adjacent" / "open" / "separate", a < b.
+    must_pairs: frozenset[tuple[str, str, str]] = frozenset()
 
     def by_key(self) -> dict[str, RoomRequest]:
         return {r.key: r for r in self.rooms}
@@ -130,6 +138,11 @@ def expand_program(
             room = request(
                 key, req.key, i, room_type, name, req.target_area_m2, req.min_area_m2, req.level
             )
+            if req.target_area_m2 is not None:
+                bounds = area_range(req)
+                room.area_low = max(bounds.low, room.min_area)
+                room.area_high = max(bounds.high, room.area_low)
+                room.area_must = spec.priority_of(f"/rooms/{i}/target_area_m2") == "must"
             rooms.append(room)
             for feature in req.features:
                 attached_type = (
@@ -153,8 +166,16 @@ def expand_program(
 
     adjacency = sorted({tuple(sorted((r.key, o))) for r in spec.rooms for o in r.adjacent_to})
     open_plan = sorted({tuple(sorted((r.key, o))) for r in spec.rooms for o in r.open_to})
+    separate = sorted({tuple(sorted((r.key, o))) for r in spec.rooms for o in r.separate_from})
+    must_pairs = frozenset(
+        (req.kind, min(req.room, req.other), max(req.room, req.other))
+        for req in requirements(spec)
+        if req.mandatory and req.room is not None and req.other is not None
+    )
     return Program(
         rooms=rooms,
         adjacency=[(a, b) for a, b in adjacency],
         open_plan=[(a, b) for a, b in open_plan],
+        separate=[(a, b) for a, b in separate],
+        must_pairs=must_pairs,
     )
