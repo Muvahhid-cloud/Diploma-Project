@@ -146,7 +146,9 @@ Goal: ground the AI and the deterministic engines in structured, versioned, sour
 | K1 — Knowledge Foundation | pure `modules/catalog`; provenance/source model; knowledge-item, ontology, glossary, drawing-profile and region-profile schemas; loader, registry, integrity, hash lock; `core@1` pack; Georgievsky 2004 source record and `spds-georgievsky-2004@1` pack (`spds@1` drawing profile); `generic@1` region profile | ☑ 2026-09-28 |
 | K2 — Families, Types, Assemblies | family/type/assembly/role-mapping records + integrity; generic type pack (draft, migrated `LayoutConfig` defaults); gated resolver; rules checks for types; BuildingModel 1.1.0 (`type_ref`, type/assembly snapshots, ceiling ref) with upgrade-on-read; layout `TypeSet`; properties panel type section | ☑ 2026-09-28 (branch, awaiting review) |
 | K2.5 — Architectural Geometry & Placement | geometric invariants (hosting, opening placement, walls, room boundaries vs walls, relationships, levels, stairs vs slabs, roofs vs supports, type fit) with a constraint catalog and machine-readable findings; derived coordination axes; constraint-aware layout (door fit before the search, stair lanes in the search, shared opening placement, validation of every candidate); layout@1.2.0 | ☑ 2026-09-29 (on main) |
-| K3 — Design Systems + expressive design intent | design-system records (4 editorial drafts: modern-minimal, contemporary-warm, classic-brick, scandinavian-timber) with integrity and gated resolution; spec 1.1.0 design intent (facade color, facade-specific window emphasis, room orientation, design system); BuildingModel 1.2.0 design record, wall display colors, window size classes; deterministic precedence and facade model; layout@1.3.0 integration; design checks in validate_model; renderer color keys; form controls; prompt @2 | ◐ 2026-09-29 (branch `phase-3.5-k3-design-systems`, awaiting review) |
+| K3 — Design Systems + expressive design intent | design-system records (4 editorial drafts: modern-minimal, contemporary-warm, classic-brick, scandinavian-timber) with integrity and gated resolution; spec 1.1.0 design intent (facade color, facade-specific window emphasis, room orientation, design system); BuildingModel 1.2.0 design record, wall display colors, window size classes; deterministic precedence and facade model; layout@1.3.0 integration; design checks in validate_model; renderer color keys; form controls; prompt @2 | ☑ merged into `main` 2026-10-26 (systems stay draft) |
+| Design Intelligence V1 (inserted 2026-10-26) | spec 1.2.0 (priorities, permissible area ranges, separate_from, requirement traces with MUST/SHOULD, origin and quote); `buildai-layout-patterns@1` (6 editorial draft patterns, soft heuristics, reported with status); pattern-guided search; every valid built candidate evaluated (`building/evaluation.py`), MUST requirements hard, bounded repair, `LAYOUT_REQUIREMENTS_UNMET`; interpreter intent parsing; prompt @3; layout@1.4.0; 12-case quality benchmark | ◐ 2026-10-26 (on `main`, uncommitted for review) |
+| Design Intelligence V1.1 — L-shaped plans (2026-10-26) | single-storey L footprint (main bar + bedroom wing with a garden-side gallery): skeletons, wing band, 7-wall envelope, wall-based facade segments, L slab/roofs, inside-corner renderer join; `design.footprint_shape` (MUST/SHOULD) and pattern-suggested L competing on the evaluation; footprint measured on the model and reported; reference spec 11 + web fixture; 6 benchmark cases; layout@1.5.0, prompt @4 | ◐ 2026-10-26 (on `main`, uncommitted for review) |
 | K4 — Templates | real building configurations (programme, relationships, circulation, structural concept, constraints, layout hints); needs sources beyond the drafting handbook | ☐ |
 | K5 — Knowledge API and Units | read-only catalog API; imperial display/input conversion over SI internals | ☐ |
 | K6 — Optional Structural Elements | structural element types (foundations, columns, beams, lintels) | ☐ |
@@ -196,6 +198,83 @@ Goal: ground the AI and the deterministic engines in structured, versioned, sour
 | Backward compatibility | ☑ all 10 reference geometry fingerprints equal to main; 1.0.0 and frozen 1.1.0 models upgrade on read; BuildingModel 1.2.0 |
 | Live OpenRouter test (Claude Opus 5.5, one call) | ☑ yellow facade on all 11 exterior walls; 3 panoramic windows, all on the rear; front: standard only; living + dining on the rear; no K2.5, design or rules findings; 1 call, no repair |
 
+## Phase 3.6 — Plan drawings & plan editing ◐
+Goal: the design is presented, reviewed and adjusted as a professional floor-plan drawing (чертёж) before it is accepted and shown in 3D. Inserted 2026-10-26 ahead of K4 (decision 18). The drawing is a second rendering of the BuildingModel, never a source of truth. Details: [3d-engine.md §19–§20](3d-engine.md).
+
+User workflow (decision 19): **describe with AI → 2D plan → select and edit rooms, walls, doors, windows (validated, undo/redo) → accept → the same BuildingModel in 3D** — no second AI call and no independent layout after the edits.
+
+| Step | Scope | Status |
+|---|---|---|
+| D1 — Plan drawing & downloads | pure drawing builder + SVG renderer (wall poché, openings with swings, windows, stairs, furniture, hatched terraces, room names and areas, dimension chains); A3 sheet (title, scale, north arrow, scale bar, title block, disclaimer); 3D / Floor plan switch with zoom, pan and selection; PDF (all floors, vector), SVG and PNG downloads | ☑ 2026-10-26 (on `main`, uncommitted for review) |
+| D2 — Editable 2D floor plan | typed `building/operations` applied and validated by the API (preview + save as a new version), client session with undo/redo, edits on the plan. Increments: **D2.1 move wall** (live preview, connected walls and rooms, validation) ☑ → **D2.2 resize room** (side handles; moves the interior walls of that side) ☑ → **D2.3 move / add / remove doors and windows** ☑ → **D2.4 resize doors/windows, remove interior walls (open or merge rooms), rename / change room type** ☑ | ◐ 2026-10-28 D2.1–D2.4 (on `main`, uncommitted for review) |
+| D3 — Accept → 3D | a generated design opens in the plan view as a draft; "Accept design" marks the edited version accepted and opens the same model in 3D (version status column) | ☐ |
+| D4 — DXF export | the drawing as DXF for CAD tools | ☐ optional |
+
+**D1 checklist** (verified 2026-10-26, Windows dev machine):
+
+| Criterion | Result |
+|---|---|
+| Drawing derived from the model only | ☑ no API, schema or stored-data change; every group maps to one element; areas from the model |
+| Walls, openings, door swings, windows, stairs, furniture, terraces, labels, dimensions | ☑ demo, generated 2-storey, L and T fixtures (rendered and inspected) |
+| One renderer for screen and files | ☑ on-screen plan, SVG, PNG and PDF use the same SVG markup |
+| Interactive plan view | ☑ 3D / plan switch, floors, zoom, pan, click-select shared with 3D and the properties panel, furniture layer; phone width |
+| Downloads | ☑ in the browser: PDF (2 vector A3 pages for the 2-storey demo, room names, areas and dimensions as text), SVG, PNG (150 dpi) |
+| Project editor | ☑ signed in (demo account): v2 of the L reference project as plan; the SVG title block carries the project name and version |
+| Deferred (2026-10-26) | PDF text with Cyrillic/Kazakh characters (3d-engine.md §19.7): drawings stay English in this milestone |
+
+**D2.1 checklist — move wall** (verified 2026-10-26, Windows dev machine):
+
+| Criterion | Result |
+|---|---|
+| Typed operation, pure applier | ☑ `building/operations`: `MoveWall {wall_id, offset_m}`; joined walls stretch, a step wall closes a broken line, room boundaries and areas follow, openings keep their plan position, furniture against the wall follows, `bounds`/`adjacent_to` recomputed; deterministic (replay = same model) |
+| Never an inconsistent model | ☑ the result passes the schema, `validate_model` and the rules profile, or the edit is refused: no new model error, no new rules finding, no corridor/hall squeezed below the corridor minimum; refusals name the reason (e.g. "Corridor would get a passage narrower than the 1.0 m corridor minimum") |
+| Exterior walls | ☑ refused with a reason (footprint, slabs and roof are not edited yet) |
+| Live preview | ☑ every 5 cm snap while dragging is checked by the server; green / red outline and the reason; release applies only a valid move |
+| Undo / redo / discard / save | ☑ client session (cursor into the operation list, Ctrl+Z / Ctrl+Shift+Z); "Save version" stores v(n+1) with source `manual`, parent and operations; base version unchanged |
+| Areas and dimensions | ☑ room labels, dimension chains and downloads (SVG/PNG/PDF) show the edited model |
+| 3D | ☑ the edited model is the one the 3D view renders (no second generation) |
+| Not yet | openings, exterior walls; drafts survive only in the tab (no `drafts` table) |
+
+**D2.2 checklist — resize room** (verified 2026-10-27, Windows dev machine):
+
+| Criterion | Result |
+|---|---|
+| Typed operation reusing D2.1 | ☑ `ResizeRoom {room_id, edge, delta_m}` (+ = outwards) becomes `move_wall` on every interior wall along that side, so neighbours, joined walls, step walls, openings, furniture and relationships follow and the same validation applies |
+| Shared walls | ☑ the neighbour on the other side of the wall gives up exactly what the room gains (level floor area conserved; Hypothesis property over every side of 4 fixtures) |
+| Minimums, corridors, requirements | ☑ refused: rules-profile minimums (e.g. clear width), corridor pinch, and — new for all edits — a MUST requirement of the version's spec that the base met (`EDIT_REQUIREMENT_UNMET`); a broken SHOULD becomes a warning |
+| Doors, windows, stairs | ☑ openings in the moved wall move with it; an opening pushed off or into a junction, a wall cutting a stair → refused with the element named |
+| Sides that cannot move | ☑ exterior walls, open (wall-less) boundaries and partly-open sides are refused with the reason; grey handles in the plan |
+| Live preview | ☑ dragging a side handle: green/red outline, "Kitchen · west side +0.30 m · 29.4 m² (was 27.6) · 4.90 × 6.00 m" |
+| Keyboard, snapping, undo/redo/discard/save | ☑ 5 cm snap, arrows / Shift-arrows on the chosen side, Enlarge/Shrink with a distance; session as D2.1 |
+| One model everywhere | ☑ plan, properties panel, 3D and SVG/PNG/PDF show the resized room |
+| Not yet | open boundaries (open-plan rooms), exterior walls, sides that are partly walls |
+
+**D2.3 checklist — doors and windows** (verified 2026-10-27, Windows dev machine, project "D2 plan edit test" v4 → v5):
+
+| Criterion | Result |
+|---|---|
+| Typed operations | ☑ `move_opening`, `add_opening`, `remove_element` (doors/windows) in `building/operations/openings.py`, through the same preview/save pipeline (docs/building-model.md §5.3) |
+| Move | ☑ drag along the wall or onto another wall of the level, Position field, ← → / arrow keys (5 cm, Shift 25 cm); id, kind and size kept; a door's rooms recomputed |
+| Add | ☑ "+ Door" / "+ Window": kind (interior / entrance / sliding door; casement / fixed / sliding / panoramic window), width, height, sill; hover a wall for the checked outline, click to place; sized like the model's own openings by default |
+| Remove | ☑ Remove / Delete; the wall closes in the plan and in 3D |
+| Refusals, model unchanged | ☑ past the wall end, over another opening, into a joining wall, taller than the wall, a window or entrance/sliding door in an interior wall, another floor, a door with a sill, under the profile's `openings.min_clearance_m` (0.1 m) to a corner / wall end / next opening, profile minimum sizes, a room cut off (`ROOM_UNREACHABLE`), the last entrance door, a habitable room left without a window |
+| Live preview | ☑ green / red outline over the wall, "W-G05 · 2.80 m from its start · −0.30 m to its end · … would reach past the end of W-G05 (the wall is 3.40 m long …)" |
+| Undo / redo / discard / save / reload | ☑ session as D2.1; v5 = "Plan edits on v4 (3 changes)", parent v4, v4 byte-identical; after a reload the plan and the real three.js meshes match v5 (rays through the new window hit its frame and glass, at the removed window and the door's old place the closed wall) |
+| One model everywhere | ☑ plan, properties panel, 3D, element counts and SVG/PNG/PDF sheets from the stored model |
+| Not yet | changing an opening's kind after placing it (remove and add again), garage doors in the add panel, flipping a door's swing; sizes and wall removal came with D2.4 |
+
+**D2.4 checklist — opening sizes, wall removal, room names and types** (2026-10-28, Windows dev machine):
+
+| Criterion | Result |
+|---|---|
+| Typed operations | ☑ `resize_opening`, `remove_wall {merge_rooms}`, `rename_room`, `set_room_type` through the same preview/save pipeline (docs/building-model.md §5.4) |
+| Resize doors and windows | ☑ Width / Height / Sill fields in the properties panel and end grips on the plan; identity, host, kind, sill (unless changed) and a door's rooms kept; centre kept when only the size changes |
+| Remove interior walls | ☑ open the rooms into each other, or merge two rooms into one (union outline, area recomputed, references moved to the merged room); the wall's doors go with it |
+| Rooms | ☑ rename (unique, trimmed) and change type (zone follows; the new type's rules apply) |
+| Refusals, model unchanged | ☑ beyond the wall, taller than the wall, over another opening, into a junction, under the clearance or profile minimums, upper-floor sill without guard, glazing ratio; exterior walls, walls with walls joining their middle, walls of bathrooms/WCs/garages, stair-opening edges, merges leaving a wall inside; fixed room types, duplicate names; MUST requirements and spec rooms (`EDIT_PROGRAM_CHANGED` / `EDIT_REQUIREMENT_UNMET`) |
+| Add walls | ☑ "+ Wall": divide a room with a north–south or east–west interior wall through a clicked point, with an optional door and the new room's type (`add_wall`, docs/building-model.md §5.5) |
+| Not yet | finishes do not follow a type change (a bathroom made from a bedroom keeps parquet); removing walls that other walls join in the middle; free-standing or diagonal walls, walls that cross several rooms; changing an opening's kind |
+
 ## Phase 4 — Quantities & preliminary cost ☐
 - Material library (YAML → DB); item-code vocabulary
 - Takeoff: walls net of openings (area/volume/blocks), slabs (concrete m³, rebar kg estimate), roof, finishes by room, doors/windows counts & areas, stairs
@@ -223,7 +302,7 @@ Goal: ground the AI and the deterministic engines in structured, versioned, sour
 - **Exit**: one-click PDF report for any version
 
 ## Phase 8 — Hardening & beta ☐
-- Walk mode, plan view, measurements; performance work (BatchedMesh, worker builds)
+- Walk mode, measurements; performance work (BatchedMesh, worker builds) (plan view: Phase 3.6)
 - Rate limits/budgets, observability (structured logs, error tracking), backups
 - Security review, accessibility pass, onboarding/demo project
 - **Exit**: closed beta
@@ -250,6 +329,11 @@ IFC export · GLB fixture catalog · multiple cost regions & user-editable catal
 | 11 | Requested area vs. room program (2026-09-28) | The requested gross floor area is delivered; rooms deviate instead, and every deviation > 15 % (and unmet adjacency) is reported — never silent |
 | 12 | AI output mechanism (2026-09-28) | Structured outputs (JSON Schema of `SpecificationDraft`) instead of forced tool use; ≤ 1 repair call; model name from `AI_MODEL` only |
 | 14 | Phase 3.5 knowledge (2026-09-28) | Steps K1 Knowledge Foundation → K2 Families, Types, Assemblies → K3 Design Systems → K4 Templates → K5 Knowledge API and Units → K6 Optional Structural Elements. Georgievsky 2004 is one source, scoped as the SPDS/ESKD-era `spds` drawing-convention profile, never a global standard; extracted knowledge stays unreviewed until a person reviews it; only approved knowledge may be consumed; knowledge is not rules |
+| 15 | Mandatory vs preferred requirements (2026-10-26) | Spec values carry MUST/SHOULD traces. A MUST is never relaxed: generation fails with the unmet requirements instead. Explicit room targets have a permissible range (default ±10 %), and every miss is reported (supersedes the 15 % threshold of #11 for explicit targets) |
+| 16 | Draft layout patterns (2026-10-26) | Layout patterns are soft heuristics; draft patterns may steer generation but never hard constraints, and are always reported as draft/experimental (exception to "only approved knowledge is consumed", knowledge.md §3.6) |
+| 17 | Footprint topology (2026-10-26) | A requested footprint shape is a user requirement (MUST → that shape or a reasoned failure; SHOULD → that shape whenever a valid one meets every MUST). Pattern-suggested topologies only add candidates that compete on the evaluation. The reported shape is measured on the validated model. L shapes are single-storey in v1 |
+| 18 | Plan drawings first (2026-10-26) | Phase 3.6 (plan drawings, draft → accept, plan editing) is inserted before K4. The drawing is a derived rendering of the BuildingModel like the 3D view; plan edits will be typed operations validated by the API and saved as new versions, never edits of the drawing. Door opening direction is a drawing convention (into the `connects` room) until the model stores it |
+| 19 | Edit before accepting (2026-10-26) | The plan is edited before the design is accepted and shown in 3D. Edits are typed operations replayed and validated by the API on the stored base version (the client holds only the operation list); an edit that would introduce a model error, a rules-profile finding or a corridor below the corridor minimum is refused with its reason. Saving creates a new immutable version (source `manual`). Exterior walls are not editable yet. PDF stays English in this milestone |
 | 13 | Default model suggestion (2026-09-28) | `.env.example` suggests `claude-opus-5`; any model is a configuration change, never a code change |
 
 ## Open decisions

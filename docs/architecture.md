@@ -186,7 +186,8 @@ All routes under `/api/v1`. OpenAPI generated automatically.
 | GET | `/projects/{id}/versions/{vid}` | ☑ Full version: spec + model + generation report + rules/model findings evaluated on read |
 | POST | `/projects/{id}/versions/demo` | ☑ Store the hand-authored demo house as a new version |
 | POST | `/projects/{id}/versions/{vid}/modify/plan` | NL → ModificationPlan (preview, no write) |
-| POST | `/projects/{id}/versions/{vid}/operations` | Apply ops → new version (or draft) |
+| POST | `/projects/{id}/versions/{vid}/edits/preview` | Replay typed ops on the version and validate; returns the model or why not (nothing stored) — Phase 3.6 D2 |
+| POST | `/projects/{id}/versions/{vid}/edits` | Replay + validate typed ops → new version (source `manual`, 422 `EDIT_REJECTED` if invalid) — Phase 3.6 D2 |
 | GET | `/projects/{id}/versions/{vid}/quantities` | Takeoff |
 | GET | `/projects/{id}/versions/{vid}/cost?catalog=` | Estimate |
 | GET | `/projects/{id}/compare?a=&b=` | Element/quantity/cost diff |

@@ -118,6 +118,24 @@ Code: `building/design.py` (precedence, effective values, tier-2 checks), `build
 
 Tier-2 codes: `APPEARANCE_INVALID` (unknown color), `WINDOW_FACADE_CONFLICT` (a facade both preferred and excluded), `FACADE_PREFERENCE_INVALID` (duplicate facades, a room facing left/right), `DESIGN_SYSTEM_UNKNOWN`, `DESIGN_SYSTEM_NOT_APPROVED` (draft or incomplete system), `DESIGN_OPTION_CONFLICT`. Requested-vs-delivered checks (`requirements.design_checks`) read the generated model: facade color, emphasised windows per preferred facade, none on excluded facades, room orientation.
 
+### 2.4 Priorities, ranges, separation and requirement traces (1.2.0, Design Intelligence V1)
+
+Code: `building/specification.py`, `building/intent.py` (meaning of traces, tier-2 checks), `building/evaluation.py` (checked on the generated model). Additive: every field is optional/empty by default, so 1.0.0 and 1.1.0 documents keep their meaning.
+
+| Field | Meaning | Engine effect |
+|---|---|---|
+| `rooms[].max_area_m2` | upper end of the permissible range (with `min_area_m2`) | search penalty outside the range; requirement check; `LAYOUT_AREA_DEVIATION` when missed |
+| `rooms[].separate_from` | rooms that must not share a wall with this one | search penalty when neighbours (bands, order); requirement check; `LAYOUT_SEPARATION` when missed |
+| `design.priorities` | ordered subset of `daylight, privacy, garden_connection, compactness, open_plan` | ×3 weight of the matching evaluation criterion; selects layout patterns (docs/knowledge.md §3.6) |
+| `design.footprint_shape` | `rectangular` \| `l_shape` \| `t_shape` \| `u_shape` \| `courtyard` (null = the engine chooses; values beyond L added in V1.3, still spec 1.2.0 — additive) | topology selection (docs/3d-engine.md §16.10–16.12); checked against the shape measured on the model; what can be generated is `building/footprint.py CAPABILITIES` (L and T one storey; U and courtyard not yet): otherwise `SPEC_FOOTPRINT_UNSUPPORTED`, an error if MUST (refused with the reason, never a rectangle), a warning if SHOULD |
+| `requirements[]` | `{path, priority: must\|should, origin: user_text\|form\|assumption, quote}` per spec value | MUST = hard (candidate rejected; generation fails with `LAYOUT_REQUIREMENTS_UNMET` rather than relaxing it); SHOULD = scored and reported |
+
+**Permissible area range** of an explicit room target: `[min_area_m2, max_area_m2]` where given, else target ± 10 % (`intent.DEFAULT_AREA_TOLERANCE`, an evaluation default, not a rule; the rules profile still bounds every room from below). Before 1.2.0 a deviation was only reported above 15 % (decision 11); now every explicit target outside its range is reported.
+
+**Requirement traces** name the value they govern by JSON pointer. MUST is accepted only where the engine can check it on the model: `/rooms/<i>/target_area_m2`, `/rooms/<i>/adjacent_to/<j>`, `/rooms/<i>/open_to/<j>`, `/rooms/<i>/separate_from/<j>`, `/rooms/<i>/faces`, `/design/windows`, `/design/footprint_shape`. Values without a trace are SHOULD. Tier-2 codes: `SPEC_REQUIREMENT_PATH` (pointer names nothing), `SPEC_REQUIREMENT_UNSUPPORTED` (MUST on a value the engine cannot enforce), `SPEC_REQUIREMENT_CONFLICT` (a room both next to and separate from another), `SPEC_UNKNOWN_ROOM_KEY` (separate_from), `SPEC_AREA_BELOW_MINIMUM` (max below the rules minimum), `SPEC_RANGE_WITHOUT_TARGET` (warning).
+
+**Evaluation** (`building/evaluation.py`, derived, never stored in the model): every requirement → met/not met with expected vs delivered and the user's words; soft criteria in [0, 1] with weights and an explanation: requested room sizes, preferences met, circulation share, room proportions, daylight (window or glazed door), bedroom privacy, garden connection, kitchen–dining–living sequence, footprint compactness. "Next to" = ≥ 0.9 m shared boundary; "open to" = ≥ 0.9 m without a wall, directly or facing each other across an open corridor stretch; "apart" = < 0.05 m shared. It does not evaluate structure, code compliance, acoustics, sun orientation or cost. The result is stored in the version's generation report.
+
 ### 2.1 Room types (v1)
 
 A spec may request: `bedroom, bathroom, wc, kitchen, living, dining, open_kitchen_living, study, laundry, utility, storage, plant_room` (+ `en_suite`, `walk_in_closet` via bedroom `features`). The engine adds circulation (`entrance` hall, `corridor`, `staircase`/landing), `garage`, `balcony` and `terrace` rooms from `features`. `hall` exists in the model vocabulary but is not generated yet.
@@ -349,13 +367,19 @@ Compatibility: existing codes keep their names (`OPENING_OUTSIDE_WALL`, `OPENING
 
 ```jsonc
 // discriminated union on "op"
+{ "op": "move_wall",       "wall_id": "uuid", "offset_m": 0.4 }          // implemented (Phase 3.6 D2.1)
 { "op": "add_element",     "element": Element }
-{ "op": "remove_element",  "id": "uuid", "cascade": true }           // removes hosted openings
+{ "op": "remove_element",  "element_id": "uuid" }                    // implemented (D2.3) for doors and windows only
+{ "op": "remove_wall",     "wall_id": "uuid", "merge_rooms": false }   // implemented (D2.4): interior walls; merge_rooms joins the two rooms
+{ "op": "resize_opening",  "opening_id": "uuid", "width_m": 1.8, "height_m": 1.4, "sill_m": 0.9, "offset_m": 0.8 }  // implemented (D2.4): sill/offset optional
+{ "op": "rename_room",     "room_id": "uuid", "name": "Guest bedroom" }   // implemented (D2.4)
+{ "op": "add_wall",        "room_id": "uuid", "direction": "north_south", "x_m": 1.0, "y_m": 1.45, "new_room_type": "storage", "door_width_m": 0.8, "door_height_m": 2.1 }  // implemented (D2.4): divides the room
 { "op": "update_element",  "id": "uuid", "set": { "material_id": "oak_parquet", "properties.finishes.floor": "oak_parquet" } }
 { "op": "move_element",    "id": "uuid", "delta": { "x": 0.5, "y": 0, "z": 0 } }
-{ "op": "resize_room",     "id": "uuid", "edge": "east", "delta_m": 2.0 }   // moves bounding wall, shifts neighbours
-{ "op": "set_room_type",   "id": "uuid", "room_type": "study" }
-{ "op": "add_opening",     "host_wall_id": "uuid", "kind": "window", "offset_m": 1.2, "width_m": 2.4, "height_m": 2.2, "sill_m": 0.3 }
+{ "op": "resize_room",     "room_id": "uuid", "edge": 2, "delta_m": 0.3 }  // implemented (D2.2): side 2 of the boundary, + = outwards
+{ "op": "set_room_type",   "room_id": "uuid", "room_type": "study" }   // implemented (D2.4)
+{ "op": "add_opening",     "host_wall_id": "uuid", "kind": "window", "offset_m": 1.2, "width_m": 2.4, "height_m": 2.2, "sill_m": 0.3 }  // implemented (D2.3)
+{ "op": "move_opening",    "opening_id": "uuid", "offset_m": 2.0, "host_wall_id": "uuid?" }  // implemented (D2.3): start edge along the wall; another wall of the same level
 { "op": "change_spec",     "patch": [JSON Patch ops] }                      // requires relayout
 ```
 
@@ -370,6 +394,169 @@ validate ops (refs exist, params in range)
 ```
 
 Each operation also records its **inverse** for undo within a draft. Batches that contain `change_spec` trigger a full relayout that **preserves locked elements and IDs by semantic key**; the UI warns which unlocked manual edits may be lost.
+
+
+### 5.1 Implemented: `move_wall` (Phase 3.6 D2.1)
+
+`building/operations` (pure; schemas, `walls.py`, `relationships.py`, `apply.py`). `offset_m` moves
+the wall sideways, + towards its left face (the left of its start→end direction), rounded to 1 mm,
+|offset| ≤ 20 m. Interior walls only: an exterior wall is refused (`EXTERIOR_WALL_FIXED`), because
+the footprint, slabs and roof would have to follow.
+
+- The wall keeps its length and openings. At each end: against the side of another wall the end
+  slides along it (`WALL_END_UNSUPPORTED` past its end); where the wall's line goes on (another
+  wall, or a room or void boundary on the same line) a perpendicular wall running with the move
+  keeps its length and a **step wall** (`<key>:jog:<start|end>`, uuid5 of the model id) closes the
+  gap when none does; otherwise the walls ending there stretch or shrink (a step wall shrinking to
+  zero is removed; any other wall → `WALL_WOULD_VANISH`). Walls ending on its side stretch too;
+  walls crossing it → `WALL_CROSSED`.
+- Every room boundary edge along the wall moves with it (partly overlapping edges step); area and
+  perimeter are recomputed; a room that would close or fold → `ROOM_WOULD_COLLAPSE`.
+- Openings of a wall whose start moves keep their plan position (offsets adjust). Furniture within
+  10 cm of either face, along the wall, moves with it. `bounds` and `adjacent_to` are recomputed for
+  the level from the geometry (the layout engine writes exactly these sets).
+- The moved wall gets `origin: user`; the model `metadata.source` becomes `operations`.
+
+**Acceptance (modules/editing/evaluate.py).** The edited model is held to the standard of a
+generated one: schema, `validate_model` and `rules.model_checks`. The edit is refused
+(`EDIT_INVALID`, with the blocking findings) if it introduces a model error, a rules-profile finding
+(same code on the same element as in the base does not count) or a corridor/hall part narrower than
+the profile's corridor minimum (`EDIT_CIRCULATION_PINCH`; the rules' clear width measures a room's
+main part, which allows alcoves, so passages are checked separately). New non-rule warnings are
+returned for display. Operations are replayed on the stored base version on every preview and on
+save; nothing the client renders is trusted.
+
+### 5.2 Implemented: `resize_room` (Phase 3.6 D2.2)
+
+`building/operations/rooms.py`. `edge` is the index of a side of the room's boundary as stored
+(side i runs from vertex i to i + 1; indices refer to the model the operation is applied to, so a
+client must take them from the latest model); `delta_m` moves it outwards (+, the room grows) or
+inwards (−), |delta| ≤ 20 m. A side is a set of walls, not geometry of its own: the operation
+issues `move_wall` for every wall along the side, each by ±delta so the side moves outwards. The
+neighbouring room on the other side of a shared wall, joined walls, step walls, openings, furniture
+and relationships follow exactly as for a wall move (§5.1), and the same acceptance applies.
+Refused, naming the room and side: `ROOM_NOT_FOUND`, `ROOM_SIDE_NOT_FOUND`, `NO_CHANGE`,
+`ROOM_SIDE_OPEN` (no wall: an open-plan boundary), `ROOM_SIDE_PARTLY_OPEN` (walls cover only part
+of the side), `EXTERIOR_WALL_FIXED`; errors of the wall moves are re-raised prefixed with
+"Resizing <room>:".
+
+**Mandatory requirements (all edits, D2.2).** When the version has a spec, the edited model is
+evaluated with `building.evaluation.evaluate_design`; a MUST requirement the base met and the
+edit breaks blocks the edit (`EDIT_REQUIREMENT_UNMET`, "… is required: expected …, the edited plan
+gives …"), a SHOULD becomes a warning (`EDIT_PREFERENCE_UNMET`). Requirements the base already
+missed are not counted against an edit.
+
+### 5.3 Implemented: doors and windows (Phase 3.6 D2.3)
+
+`building/operations/openings.py`. Openings stay host-relative (§4.1: host wall, `position.x` =
+start-edge offset, `position.z` = sill); the wall is built around its hosted openings (panel
+decomposition), so placing, moving or removing an opening changes the wall in the plan and in 3D
+without touching the wall element.
+
+- `move_opening {opening_id, offset_m, host_wall_id?}`: the start edge goes to `offset_m` (rounded
+  to 1 mm) along its wall, or along `host_wall_id` (same level). Id, name, kind, size and sill are
+  kept; `origin` becomes `user`; a door's `connects` rooms are recomputed (rooms whose boundary
+  runs along the door's span; still-valid relationships keep their place). `NO_CHANGE` under 1 mm.
+- `add_opening {kind: door|window, host_wall_id, offset_m, width_m, height_m, sill_m, door_kind?,
+  swing?, window_kind?}`: defaults interior door / casement window; a door's sill must be 0
+  (`INVALID_HOST_POSITION`). Material, frame material, door leaf thickness (never thicker than the
+  wall) and window pane width follow the model's first opening of that kind (fallback ids from the
+  material library). Key `<kind>:edit:<n>`, name `New <kind> <n>`, id uuid5(model id,
+  `edit:<key>`), so replays are identical. It is inserted after its wall's last opening.
+- `remove_element {element_id}`: doors and windows only (`ELEMENT_NOT_REMOVABLE` otherwise);
+  relationships pointing at it are dropped; the wall closes over the opening.
+- Refused in the operation, naming the elements: `OPENING_NOT_FOUND`, `ELEMENT_NOT_FOUND`,
+  `ELEMENT_LOCKED`, `HOST_NOT_FOUND`, `HOST_INCOMPATIBLE` (not a wall), `OPENING_LEVEL` (another
+  floor), `OPENING_WALL_INCOMPATIBLE` (windows and entrance / sliding / garage doors need an
+  exterior wall; interior doors may go in any wall), `OPENING_OUTSIDE_WALL`, `OPENING_TOO_TALL`,
+  `OPENINGS_OVERLAP`, `OPENING_IN_WALL_JUNCTION` (the same interval arithmetic as the validator,
+  `hosting.py`).
+
+**Acceptance additions (modules/editing/evaluate.py, all edits).** Besides §5.1/§5.2: an opening
+the edit placed (moved or new) keeps the rules profile's `openings.min_clearance_m` of solid wall
+to a joining wall, to its wall's ends and to the other openings of the wall
+(`EDIT_OPENING_CLEARANCE`, with the measure); an edit may not introduce `ROOM_UNREACHABLE`,
+`NO_ENTRANCE` or `HABITABLE_ROOM_WITHOUT_WINDOW` (`EDIT_BLOCKING_WARNINGS`: tolerated in stored
+designs, never created by an edit) and may not remove the last entrance door
+(`EDIT_ENTRANCE_REMOVED`). Rules minimums (door/window sizes, glazing ratio) apply as for every
+edit. The clearance is not applied to openings an edit did not place, so wall moves (D2.1/D2.2)
+behave as before.
+
+### 5.4 Implemented: opening sizes, wall removal, room names and types (Phase 3.6 D2.4)
+
+- `resize_opening {opening_id, width_m, height_m, sill_m?, offset_m?}` (`openings.py`): new width
+  and height (rounded to 1 mm), a window's sill (`sill_m` omitted keeps it; a door's must stay 0,
+  `INVALID_HOST_POSITION`). `offset_m` places the start edge; omitted, the opening keeps its centre,
+  shifted only as far as needed to stay inside its wall. Id, name, host, kind, materials and a
+  door's leaf thickness are kept; `origin` becomes `user`; a door's `connects` are recomputed; a
+  window's mullions are recounted so the panes keep about their width; a `type_ref` whose fixed
+  parameters (a door type's height) the new size contradicts is dropped (the opening becomes a
+  custom one). The same fit checks as D2.3 refuse it (`OPENING_OUTSIDE_WALL`, `OPENING_TOO_TALL` —
+  the wall height is the maximum, `OPENINGS_OVERLAP`, `OPENING_IN_WALL_JUNCTION`); `NO_CHANGE` when
+  nothing changes. The editing check treats a resized opening as placed (the profile's
+  `openings.min_clearance_m` applies) and applies the profile's minimum sizes, window guard and
+  sill heights and glazing ratio like for every edit.
+- `remove_wall {wall_id, merge_rooms = false}` (`wall_removal.py`): interior walls only
+  (`EXTERIOR_WALL_FIXED`: the footprint, slabs and roof rest on exterior walls). The wall's doors
+  are removed with it and every relationship pointing at a removed element is dropped (no orphaned
+  openings). Without `merge_rooms` the rooms on both sides keep their outlines and open into each
+  other along the former wall (an open boundary; validation links such rooms for reachability).
+  With `merge_rooms` the wall must border exactly two rooms (`ROOM_MERGE_UNSUPPORTED`); they become
+  one room with the union outline (rectilinear, counter-clockwise, area and perimeter recomputed):
+  the larger room (ties: smaller semantic key) keeps its id, name, type, height and finishes, the
+  other is removed and everything that pointed at it (doors' `connects`, furniture's
+  `located_in`, …) points at the merged room; a merge that would leave another wall inside the
+  room is refused (`ROOM_MERGE_WALL_INSIDE`, remove that wall first). Also refused:
+  `WALL_HAS_JUNCTIONS` (walls end on or cross its middle and would stand free),
+  `WALL_EDGES_OPEN_SPACE` (a room on one side only: the edge of a stair opening),
+  `WALL_ENCLOSES_ROOM` (bathrooms, WCs, en-suites, garages and plant rooms keep their walls; two
+  rooms of the same such type may be merged), `ELEMENT_LOCKED`, `WALL_NOT_AXIS_ALIGNED`.
+  `remove_element` still refuses walls (`ELEMENT_NOT_REMOVABLE`, naming `remove_wall`).
+- `rename_room {room_id, name}` (`rooms.py`): trimmed, inner whitespace collapsed, 1–120
+  characters without control characters (`ROOM_NAME_INVALID`), unique among the model's rooms
+  ignoring case (`ROOM_NAME_TAKEN`); id, key and geometry are kept.
+- `set_room_type {room_id, room_type}` (`rooms.py`): the semantic type and its zone
+  (`room_zone`: public / private / circulation / exterior / service, the same as the layout
+  program for the types it plans). Staircase, garage, balcony and terrace are tied to other
+  elements or the envelope: a change to or from them is refused (`ROOM_TYPE_UNSUPPORTED`). Name,
+  geometry and finishes are kept (a bedroom turned into a bathroom keeps its parquet: finishes are
+  not re-derived). The new type's rules apply through the editing check (minimum area and width,
+  a window for habitable rooms, door widths of wet rooms, glazing).
+
+**Acceptance additions (all edits, D2.4).** The design evaluation finds the spec's rooms by
+semantic key, so it would still credit a bedroom turned into a study. `program_changes` therefore
+compares the base and edited room of every spec room instance: a type change or a merge of a room
+the spec asked for is a warning (`EDIT_PROGRAM_CHANGED`), and blocks the edit
+(`EDIT_REQUIREMENT_UNMET`) when that spec room carries a MUST requirement.
+
+### 5.5 Implemented: `add_wall` — divide a room (Phase 3.6 D2.4)
+
+`building/operations/wall_addition.py`. `{room_id, direction: east_west | north_south, x_m, y_m,
+new_room_type?, door_width_m?, door_height_m?}` (door width and height together or not at all).
+The new interior wall runs `direction` through the point (rounded to 1 mm, strictly inside the
+room) across the room from boundary to boundary — in an L-shaped room across the arm that holds
+the point. Both ends must lie on an existing wall's axis (`WALL_END_OPEN` on an open boundary) and
+not on a door or window of that wall, widened by half the new wall's thickness
+(`WALL_END_ON_OPENING`).
+
+- The room is split along the axis: the larger part keeps the room (id, name, type, key, height,
+  finishes); the smaller part is a new room `room:edit:<n>` (uuid5 of the model id, name
+  `New room <m>` unique among rooms) of `new_room_type` (default the room's type; zone from
+  `room_zone`). Areas and perimeters are recomputed; outlines are counter-clockwise and simplified.
+- The wall copies the build-up of an interior wall bounding the room (else of the level, else of
+  the model; `WALL_TEMPLATE_MISSING` if none): thickness, height, finishes, type. Key
+  `wall:edit:<n>`, name `New wall <n>`, `origin: user`, inserted after the level's last wall.
+- Furniture and stairs `located_in` the room move to the part that holds their centre; doors
+  opening into the room are reconnected (`connects` recomputed from geometry). Furniture whose
+  footprint the wall body would cut is refused (`FURNITURE_IN_THE_WAY`, naming it).
+- With a door size, `add_opening` places an interior door in the middle of the new wall (its
+  refusals are re-raised as "The door of the new wall: …"). Without one, the editing check refuses
+  a part that can no longer be reached (`ROOM_UNREACHABLE`).
+- Also refused: `ROOM_NOT_FOUND`, `ELEMENT_LOCKED`, `POINT_OUTSIDE_ROOM`, `ROOM_TYPE_UNSUPPORTED`
+  (staircase, garage, balcony, terrace can neither be divided nor created), `ADD_WALL_INVALID`.
+  Minimum area and width of both parts, windows of habitable rooms and the spec's MUST
+  requirements are judged by the editing check. `remove_wall {merge_rooms: true}` on the new wall
+  gives the room back.
 
 ---
 
@@ -469,6 +656,8 @@ windows:
   guard_required_below_sill_m: 0.9   # upper floors: sills lower than this need a guard/railing
   min_width_m: 0.6
   min_height_m: 0.6
+openings:                            # plan editing (D2.3), optional: absent = no clearance rule
+  min_clearance_m: 0.1               # solid wall from a moved/added opening to a corner/joining wall, wall end or next opening
 stairs:
   min_width_m: 0.9
   riser_m: { min: 0.15, max: 0.19 }

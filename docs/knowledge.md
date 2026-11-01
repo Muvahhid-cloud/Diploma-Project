@@ -226,6 +226,49 @@ usable: a spec naming a draft system fails tier 2 with `DESIGN_SYSTEM_NOT_APPROV
 Tests approve records only in temporary copies (`tests/catalog/helpers.py
 approve_design_systems`, `approved_design_registry`), as in K2.
 
+### 3.6 Layout patterns (Design Intelligence V1)
+
+A **layout pattern** (`PatternRecord`, `catalog/patterns_schema.py`, listed under a pack's
+`contents.patterns`) is a reusable arrangement recipe for the deterministic layout engine. Each
+record has: intended use (`intent`), suitable `context`, room `relationships` (adjacency graph in
+words), `circulation`, `privacy`, `daylight` and `facade` implications, `tradeoffs`,
+`limitations`, `statements` (each `principle` | `source_rule` | `heuristic`), `engine_support`
+(`full` | `partial` | `none`), `applicability` (triggers + optional storey-area threshold,
+storeys) and a `recipe` the engine reads: `band_preferences` (room types → garden/street side,
+weight), `affinities` / `separations` (room-type pairs, weight), `footprint_aspect` (preferred
+width/depth range).
+
+**Statement kinds stay apart.** A `principle` is a widely taught design principle stated without
+a source claim; a `source_rule` needs a cited published source and a review
+(`PATTERN_RULE_UNSOURCED` otherwise); a `heuristic` is BuildAI's own rule of thumb — every recipe
+must be explained by one (`PATTERN_RECIPE_UNEXPLAINED`). A pattern the engine cannot realise is
+`engine_support: none`, `usage: reference_only` and has no recipe
+(`PATTERN_UNSUPPORTED_RUNTIME`); partial support must list its limitations.
+
+**Consumption policy (decided 2026-10-26, exception to "only approved knowledge is
+consumed").** Layout patterns are *soft heuristics*, like the `LayoutConfig` defaults the engine
+already uses. Draft patterns may steer generation, under these conditions: they only change
+scored preferences (never create, relax or override a user requirement or a rules-profile
+limit); every use is reported with the pattern's status ("draft · experimental") in the
+generation report and engine notes; they are never presented as verified standards. Patterns are
+resolved by `catalog/patterns.py pattern_library` (deprecated and reference-only records are
+left out) into `building.patterns.LayoutPattern` snapshots; only the generation pipeline reads
+the catalog. Applicability is decided by the engine from the spec (`layout/patterns.py`).
+
+A recipe may also name a footprint `topology` (`l_shape`, V1.1): the engine then searches that
+topology **in addition to** rectangles and lets the evaluation decide; a pattern never replaces
+the rectangular option and never satisfies or overrides a user's `design.footprint_shape`
+(a requirement). Topology patterns must be single-storey (`PATTERN_TOPOLOGY_STOREYS`).
+`applicability.required_triggers` (all must be present) and `min_floor_area_per_storey_m2`
+narrow when a pattern applies.
+
+**`buildai-layout-patterns@1`** (global, editorial, **draft**; amended before release with the L
+pattern, V1.1): `compact_family_home`, `garden_oriented_living`, `l_shaped_garden_wing`
+(garden focus **and** privacy, one storey, ≥ 110 m²), `narrow_plot_linear`, `open_plan_living`,
+`public_private_zoning`, and
+`courtyard_house` (reference only: the double-loaded engine cannot enclose an outdoor room). No
+statement is a `source_rule`; all provenance is `buildai-editorial`.
+
 ## 4. Drawing profiles
 
 A `DrawingProfile` (`spds@1`) is a versioned grouping of a pack's drawing items by topic (sets,
