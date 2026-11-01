@@ -82,6 +82,15 @@ class StairRules(RulesModel):
     landing_min_depth_m: float = Field(gt=0)
 
 
+class OpeningRules(RulesModel):
+    """Plan-edit placement of doors and windows (Phase 3.6 D2.3): a moved or added opening keeps
+    this much solid wall to a wall corner/junction, to the end of its wall and to the next
+    opening of the wall. Applied by the editing service to the openings an edit places, not to
+    generated models (the layout engine places openings with its own, larger margins)."""
+
+    min_clearance_m: float = Field(ge=0)
+
+
 class RailingRules(RulesModel):
     min_height_m: float = Field(gt=0)
     balcony_min_height_m: float = Field(gt=0)
@@ -106,6 +115,7 @@ class BuildingRulesProfile(RulesModel):
     corridors: CorridorRules
     doors: DoorRules
     windows: WindowRules
+    openings: OpeningRules | None = None  # None: no clearance rule (profiles before D2.3)
     stairs: StairRules
     railings: RailingRules
     accessibility: AccessibilityRules

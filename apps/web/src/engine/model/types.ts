@@ -39,6 +39,7 @@ export type TypeSnapshot = BuildingModel["types"][number];
 export type AssemblySnapshot = BuildingModel["assemblies"][number];
 export type ElementType = BuildingElement["type"];
 export type Opening = Door | Window;
+export type RoomType = Room["properties"]["room_type"];
 export type ElementOfType<T extends ElementType> = Extract<BuildingElement, { type: T }>;
 
 export const EPS = 1e-4; // meters, same as the API (primitives.py)

@@ -5,6 +5,7 @@ import {
   type BuildingSpecification,
   buildingSpecificationSchema,
 } from "@buildai/schema";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -14,9 +15,10 @@ import { AIGeneratorPanel } from "@/features/ai/components/AIGeneratorPanel";
 import { StageList } from "@/features/ai/components/AIGenerationStatus";
 import { GenerationHistory } from "@/features/ai/components/GenerationHistory";
 import { GenerationSummary } from "@/features/ai/components/GenerationSummary";
+import { hasUnsavedEdits, useEditStore } from "@/features/editing/store";
 import { GenerationPanel } from "@/features/generation/components/GenerationPanel";
-import { useProject } from "@/features/projects/api";
-import { useImportDemo, useVersion, useVersions } from "@/features/versions/api";
+import { projectKeys, useProject } from "@/features/projects/api";
+import { useImportDemo, useVersion, useVersions, versionKeys } from "@/features/versions/api";
 import { ReportPanel } from "@/features/versions/components/ReportPanel";
 import { ApiError } from "@/lib/api/errors";
 import type { Version } from "@/lib/api/schemas";
@@ -39,10 +41,17 @@ type DesignMode = "ai" | "form";
 export function ProjectEditor({
   projectId,
   generationId = null,
+  onGenerationReleased,
 }: {
   projectId: string;
   /** An AI generation to follow (started from the projects dashboard). */
   generationId?: string | null;
+  /**
+   * Another version than `generationId`'s is now open (saved plan edits, the version menu,
+   * history, a new design): the caller drops the generation link (the URL), so that reloading
+   * opens the project's latest version instead of the generation's older one.
+   */
+  onGenerationReleased?: () => void;
 }) {
   const project = useProject(projectId);
   const versions = useVersions(projectId);
@@ -57,6 +66,20 @@ export function ProjectEditor({
     summary.data?.status === "completed" ? (summary.data.version_id ?? null) : null;
   const versionId = chosen ?? summaryVersion ?? project.data?.current_version_id ?? null;
   const version = useVersion(projectId, versionId);
+  const qc = useQueryClient();
+  const unsaved = useEditStore(hasUnsavedEdits);
+  const unsavedCount = useEditStore((s) => s.cursor);
+  // The version the generation link opens (only known once that generation has completed).
+  const linked = useAIGeneration(generationId);
+  const linkedVersion =
+    linked.data?.status === "completed" ? (linked.data.version_id ?? null) : null;
+  const openId = version.data?.id ?? null;
+
+  useEffect(() => {
+    if (linkedVersion !== null && openId !== null && openId !== linkedVersion) {
+      onGenerationReleased?.();
+    }
+  }, [linkedVersion, openId, onGenerationReleased]);
   const status = useBuildingStore((s) => s.status);
   const scene = useBuildingStore((s) => s.scene);
   const buildError = useBuildingStore((s) => s.error);
@@ -74,15 +97,48 @@ export function ProjectEditor({
     });
     useSelectionStore.getState().select(null);
     useViewerStore.getState().reset(); // frames the whole building (exterior camera)
+    // Plan edits are made on this version (docs/3d-engine.md §20).
+    useEditStore.getState().begin(projectId, data);
   }, [version.data, projectId, project.data?.name]);
+
+  // Unsaved plan edits live only in this tab: warn before they are lost.
+  useEffect(() => {
+    if (!unsaved) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [unsaved]);
 
   useEffect(
     () => () => {
       useBuildingStore.getState().clear();
       useProjectStore.getState().setProject(null);
+      useEditStore.getState().end();
       materialCache.dispose();
     },
     [],
+  );
+
+  /** Switch versions, asking first when the plan has unsaved edits. */
+  const confirmLeavingEdits = useCallback(
+    () =>
+      !hasUnsavedEdits(useEditStore.getState()) ||
+      window.confirm("Discard the unsaved plan edits?"),
+    [],
+  );
+
+  const onEditsSaved = useCallback(
+    async (saved: Version) => {
+      qc.setQueryData(versionKeys.detail(projectId, saved.id), saved);
+      setChosen(saved.id);
+      setJustGenerated(saved.id);
+      setSummaryId(null);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: versionKeys.list(projectId) }),
+        qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) }),
+      ]);
+    },
+    [qc, projectId],
   );
 
   const onGenerated = useCallback((id: string) => {
@@ -133,6 +189,7 @@ export function ProjectEditor({
             className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
             value={versionId ?? ""}
             onChange={(e) => {
+              if (!confirmLeavingEdits()) return;
               setChosen(e.target.value);
               setJustGenerated(null);
             }}
@@ -208,7 +265,14 @@ export function ProjectEditor({
         ) : !scene || !version.data ? (
           <Centered>Building the 3D model…</Centered>
         ) : (
-          <BuildingEditor scene={scene} />
+          <BuildingEditor
+            scene={scene}
+            onEditsSaved={(v) => void onEditsSaved(v)}
+            drawing={{
+              projectName: p.name,
+              versionLabel: drawingVersionLabel(version.data, unsavedCount),
+            }}
+          />
         )}
 
         {hasVersions && (showSummary || running) && summary.data && (
@@ -266,6 +330,7 @@ export function ProjectEditor({
                 projectId={projectId}
                 onClose={() => setDrawer("none")}
                 onOpen={(g) => {
+                  if (!confirmLeavingEdits()) return;
                   setChosen(g.version_id);
                   setSummaryId(g.id);
                   setDrawer("none");
@@ -337,6 +402,15 @@ function specOf(version: Version | undefined): BuildingSpecification | null {
   if (!version?.spec) return null;
   const parsed = buildingSpecificationSchema.safeParse(version.spec);
   return parsed.success ? parsed.data : null;
+}
+
+/** Title-block label of a drawing: the version, and the plan edits not saved yet. */
+export function drawingVersionLabel(
+  version: Pick<Version, "number" | "label">,
+  unsaved = 0,
+): string {
+  const base = `v${version.number} · ${version.label}`;
+  return unsaved > 0 ? `${base} + ${unsaved} unsaved change${unsaved > 1 ? "s" : ""}` : base;
 }
 
 function reportCount(version: Version): number {
@@ -419,7 +493,9 @@ function GeneratedBanner({
       role="status"
       className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-green-200 bg-green-50 px-4 py-2 text-sm text-green-900 dark:border-green-900 dark:bg-green-950 dark:text-green-200"
     >
-      <span className="font-semibold">Generated v{version.number}</span>
+      <span className="font-semibold">
+        {version.source === "manual" ? "Saved" : "Generated"} v{version.number}
+      </span>
       <span className="tabular-nums">
         {s.storeys} floor{s.storeys > 1 ? "s" : ""} · {s.gross_floor_area_m2} m² · {s.rooms} rooms ·{" "}
         {s.bedrooms} bedrooms · {s.bathrooms} bathrooms

@@ -73,7 +73,10 @@ export function DemoEditor() {
     );
   }
   if (!scene) return <Message title="Loading the demo house…" />;
-  return <BuildingEditor scene={scene} />;
+  const name = useBuildingStore.getState().index?.model.building.name ?? "Demo house";
+  return (
+    <BuildingEditor scene={scene} drawing={{ projectName: name, versionLabel: "Demo model" }} />
+  );
 }
 
 function Message({
