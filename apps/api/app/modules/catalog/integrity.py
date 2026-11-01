@@ -17,7 +17,8 @@ from app.modules.building.elements import ElementType
 from app.modules.building.enums import RelationshipKind, RoomType
 from app.modules.building.issues import Issue, pointer
 from app.modules.building.model import BuildingInfo
-from app.modules.catalog.component_integrity import check_components
+from app.modules.catalog.component_integrity import check_components, check_design_systems
+from app.modules.catalog.patterns_schema import check_patterns
 from app.modules.catalog.provenance import (
     Provenanced,
     SourceKind,
@@ -60,6 +61,8 @@ def check_registry(
     issues: list[Issue] = []
     issues += _check_packs(registry)
     issues += check_components(registry, known_materials=known_materials)
+    issues += check_design_systems(registry, known_materials=known_materials)
+    issues += check_patterns(registry)
     for pack in registry.packs.values():
         issues += _check_provenance(registry, pack)
         issues += _check_items(registry, pack)
@@ -156,6 +159,10 @@ def _provenanced(pack: LoadedPack) -> Iterator[tuple[str, Provenanced]]:
         yield pointer("packs", pack.ref, "assemblies", assembly.id), assembly
     for mapping in pack.role_mappings:
         yield pointer("packs", pack.ref, "role_mappings", mapping.id), mapping
+    for design in pack.design_systems:
+        yield pointer("packs", pack.ref, "design_systems", design.id), design
+    for pattern in pack.patterns:
+        yield pointer("packs", pack.ref, "patterns", pattern.id), pattern
 
 
 def _check_provenance(registry: KnowledgeRegistry, pack: LoadedPack) -> list[Issue]:

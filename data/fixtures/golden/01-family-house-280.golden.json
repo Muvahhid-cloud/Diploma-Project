@@ -1,14 +1,14 @@
 {
-  "engine_version": "layout@1.2.0",
+  "engine_version": "layout@1.15.0",
   "seed": 0,
   "footprint_m": [
-    13.5,
-    10.35
+    10.6,
+    13.2
   ],
   "summary": {
     "storeys": 2,
-    "gross_floor_area_m2": 279.4,
-    "net_floor_area_m2": 223.4,
+    "gross_floor_area_m2": 279.8,
+    "net_floor_area_m2": 224.0,
     "rooms": 13,
     "bedrooms": 4,
     "bathrooms": 3,
@@ -16,52 +16,104 @@
     "garage": true,
     "balconies": 1,
     "terraces": 0,
-    "walls": 33,
+    "walls": 30,
     "doors": 16,
-    "windows": 20,
-    "elements": 132
+    "windows": 28,
+    "elements": 136,
+    "facade_colors": [],
+    "windows_by_facade": {
+      "front": {
+        "large": 5
+      },
+      "left": {
+        "large": 2
+      },
+      "rear": {
+        "large": 5
+      },
+      "right": {
+        "large": 8
+      }
+    },
+    "rooms_on_facade": {
+      "front": [
+        "room:bathroom_1",
+        "room:bathroom_2",
+        "room:bedroom_1",
+        "room:bedroom_3",
+        "room:dining",
+        "room:garage",
+        "room:hall_0",
+        "room:kitchen"
+      ],
+      "left": [
+        "room:bathroom_1",
+        "room:bedroom_2",
+        "room:corridor_0",
+        "room:corridor_1",
+        "room:garage",
+        "room:hall_0",
+        "room:study"
+      ],
+      "rear": [
+        "room:balcony_0",
+        "room:bedroom_2",
+        "room:garage",
+        "room:living",
+        "room:master_bedroom",
+        "room:study"
+      ],
+      "right": [
+        "room:bedroom_1",
+        "room:corridor_0",
+        "room:corridor_1",
+        "room:kitchen",
+        "room:living",
+        "room:master_bedroom"
+      ]
+    }
   },
   "element_counts": {
     "door": 16,
-    "furniture": 35,
+    "furniture": 33,
     "railing": 4,
     "roof": 2,
     "room": 18,
-    "slab": 3,
+    "slab": 4,
     "stair": 1,
-    "wall": 33,
-    "window": 20
+    "wall": 30,
+    "window": 28
   },
   "rooms": [
     {
       "level": 0,
       "key": "room:corridor_0",
       "type": "corridor",
-      "area_m2": 16.2
+      "area_m2": 12.72
     },
     {
       "level": 0,
       "key": "room:dining",
       "type": "dining",
-      "area_m2": 15.97
+      "area_m2": 19.14
     },
     {
       "level": 0,
       "key": "room:garage",
       "type": "garage",
-      "area_m2": 41.27
+      "area_m2": 50.7
     },
     {
       "level": 0,
       "key": "room:hall_0",
       "type": "entrance",
-      "area_m2": 17.51
+      "area_m2": 22.44
     },
     {
       "level": 0,
       "key": "room:kitchen",
       "type": "kitchen",
-      "area_m2": 18.21
+      "area_m2": 21.87
     },
     {
       "level": 0,
@@ -73,13 +125,13 @@
       "level": 0,
       "key": "room:living",
       "type": "living",
-      "area_m2": 50.75
+      "area_m2": 42.11
     },
     {
       "level": 0,
       "key": "room:study",
       "type": "study",
-      "area_m2": 11.33
+      "area_m2": 11.88
     },
     {
       "level": 0,
@@ -97,43 +149,43 @@
       "level": 1,
       "key": "room:bathroom_1",
       "type": "bathroom",
-      "area_m2": 11.33
+      "area_m2": 14.52
     },
     {
       "level": 1,
       "key": "room:bathroom_2",
       "type": "bathroom",
-      "area_m2": 7.8
+      "area_m2": 10.56
     },
     {
       "level": 1,
       "key": "room:bedroom_1",
       "type": "bedroom",
-      "area_m2": 20.6
+      "area_m2": 18.48
     },
     {
       "level": 1,
       "key": "room:bedroom_2",
       "type": "bedroom",
-      "area_m2": 23.18
+      "area_m2": 22.68
     },
     {
       "level": 1,
       "key": "room:bedroom_3",
       "type": "bedroom",
-      "area_m2": 21.04
+      "area_m2": 18.48
     },
     {
       "level": 1,
       "key": "room:corridor_1",
       "type": "corridor",
-      "area_m2": 16.2
+      "area_m2": 12.72
     },
     {
       "level": 1,
       "key": "room:master_bedroom",
       "type": "bedroom",
-      "area_m2": 27.52
+      "area_m2": 28.68
     },
     {
       "level": 1,
@@ -148,6 +200,6 @@
     "LAYOUT_AREA_DEVIATION",
     "LAYOUT_AREA_DEVIATION"
   ],
-  "model_sha256": "d680d225aee68b15e31a64413de932caff9c3b36d5e86c42131841aab3516011",
-  "geometry_sha256": "6a187be3f1840fbef8fd3a2e65dfa65b9d3672c6f4f8d5f7da39ac1602819fba"
+  "model_sha256": "a08fff0a17df595085c2b38df4383a523e91b29727b6b418c97bbdc106ae8f35",
+  "geometry_sha256": "1ec7cdc50fb238952439337a29c0730cffd2142a6985e34e0b63275512d602e3"
 }

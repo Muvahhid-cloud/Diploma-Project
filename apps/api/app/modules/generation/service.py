@@ -21,7 +21,7 @@ from app.modules.ai.repository import AIGenerationRepository
 from app.modules.auth.models import User
 from app.modules.building.issues import Issue, errors
 from app.modules.building.specification import BuildingSpecification
-from app.modules.generation.pipeline import layout_and_save
+from app.modules.generation.pipeline import check_spec_design, layout_and_save
 from app.modules.generation.schemas import GenerateRequest, SpecValidationOut
 from app.modules.jobs.models import Job
 from app.modules.jobs.repository import JobRepository
@@ -70,6 +70,7 @@ class GenerationService:
         project = await self.projects.get(user, project_id)
         profile = rules_profile(get_settings().data_dir, project.rules_profile_id)
         issues = check_spec(spec, profile, floor_structure_m=DEFAULT_CONFIG.floor_slab_thickness)
+        issues += check_spec_design(spec)
         return SpecValidationOut(valid=not errors(issues), issues=issues, rules_profile=profile.ref)
 
     async def start(self, user: User, project_id: uuid.UUID, request: GenerateRequest) -> Job:

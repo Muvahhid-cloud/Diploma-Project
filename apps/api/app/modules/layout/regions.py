@@ -15,12 +15,14 @@ from app.modules.building.enums import RoomType, Zone
 from app.modules.building.specification import BuildingSpecification
 from app.modules.layout.config import LayoutConfig
 from app.modules.layout.plan import (
+    EPS,
     Candidate,
     Rect,
     Region,
     Segment,
     Skeleton,
     StairDesign,
+    Strip,
     rnd,
     snap,
 )
@@ -87,19 +89,29 @@ def build_regions(
     corridor_y0, corridor_y1 = sk.Ds, rnd(sk.Ds + sk.C)
 
     for lv, lvl in enumerate(levels):
+        layout = cand.levels[lv]
+        # Corridor ends cut and given to rooms (L plans, V1.2): the corridor keeps the rest.
+        cx0 = max([c.x1 for c in layout.cuts if c.x0 < EPS], default=0.0)
+        cx1 = min([c.x0 for c in layout.cuts if c.x0 >= EPS], default=sk.W)
+        corridor_rects = [Rect(cx0, corridor_y0, cx1, corridor_y1)]
+        if sk.has_wing:  # the wing's gallery continues the corridor towards its end
+            gx0, gx1 = sk.gallery_x
+            wing = next((lay for lay in layout.strips if lay.strip.side == "wing"), None)
+            end = wing.corridor_end if wing is not None else sk.depth_total
+            if end > corridor_y1 + EPS:
+                corridor_rects.append(Rect(gx0, corridor_y1, gx1, end))
         corridor = _add(
             lvl,
             Region(
                 key=f"corridor_{lv}",
                 kind="room",
-                rects=[Rect(0.0, corridor_y0, sk.W, corridor_y1)],
+                rects=corridor_rects,
                 level=lv,
                 name="Corridor" if lv == 0 else "Landing corridor",
                 room_type=RoomType.CORRIDOR,
                 zone=Zone.CIRCULATION,
             ),
         )
-        layout = cand.levels[lv]
         # Empty street-side strips join the circulation (hall on the ground floor).
         for strip in layout.merged_strips:
             rect = Rect(strip.x0, strip.y0, strip.x1, strip.y1)
@@ -118,22 +130,25 @@ def build_regions(
 
         for lay in layout.strips:
             strip = lay.strip
-            x = strip.x0
+            u = strip.start  # position along the band
             for col in lay.columns:
-                x1 = rnd(x + col.width)
+                u1 = rnd(u + col.width)
                 room = col.room
                 if col.kind == "tuck" and col.owner is not None:
-                    if strip.side == "south":
-                        tuck = Rect(x, rnd(strip.y1 - col.depth), x1, strip.y1)
-                        rest = Rect(x, strip.y0, x1, rnd(strip.y1 - col.depth))
-                    else:
-                        tuck = Rect(x, strip.y0, x1, rnd(strip.y0 + col.depth))
-                        rest = Rect(x, rnd(strip.y0 + col.depth), x1, strip.y1)
+                    tuck, rest = _tuck_rects(strip, u, u1, col.depth)
                     _add(lvl, _room_region(room, lv, [tuck]))
                     _add(lvl, _room_region(col.owner, lv, [rest]))
                 else:
-                    _add(lvl, _room_region(room, lv, [Rect(x, strip.y0, x1, strip.y1)]))
-                x = x1
+                    _add(lvl, _room_region(room, lv, [_band_rect(strip, u, u1, 0.0, None)]))
+                u = u1
+            if lay.wrap_from > 0.0 and sk.has_wing:  # the last room takes the gallery's end
+                gx0, gx1 = sk.gallery_x
+                last = lay.columns[-1].room
+                _add(lvl, _room_region(last, lv, [Rect(gx0, lay.corridor_end, gx1, u)]))
+        by_key = program.by_key()
+        for cut in layout.cuts:
+            rect = Rect(cut.x0, corridor_y0, cut.x1, corridor_y1)
+            _add(lvl, _room_region(by_key[cut.owner], lv, [rect]))
 
         hall = lvl.get(f"hall_{lv}")
         if hall is not None:
@@ -159,6 +174,27 @@ def build_regions(
         garage = _garage(levels[0], sk, spec.features.garage.cars, config)
     attachments = _attachments(levels, sk, spec, config, notes)
     return PlanLayout(sk, stair, levels, garage, attachments, notes)
+
+
+def _band_rect(strip: Strip, a0: float, a1: float, c0: float, c1: float | None) -> Rect:
+    """Rectangle of a band between a0..a1 along it and c0..c1 across it, measured from the
+    corridor edge (c1 None = to the facade). Band edges are used exactly where they apply."""
+    if strip.axis == "x":
+        lo, hi = strip.y0, strip.y1
+    else:
+        lo, hi = strip.x0, strip.x1
+    if strip.corridor_low:
+        b0 = lo if c0 == 0.0 else rnd(lo + c0)
+        b1 = hi if c1 is None else rnd(lo + c1)
+    else:
+        b0 = lo if c1 is None else rnd(hi - c1)
+        b1 = hi if c0 == 0.0 else rnd(hi - c0)
+    return Rect(a0, b0, a1, b1) if strip.axis == "x" else Rect(b0, a0, b1, a1)
+
+
+def _tuck_rects(strip: Strip, a0: float, a1: float, depth: float) -> tuple[Rect, Rect]:
+    """A tucked service room against the corridor and its owner's facade-side remainder."""
+    return _band_rect(strip, a0, a1, 0.0, depth), _band_rect(strip, a0, a1, depth, None)
 
 
 def _hall(level: int, rects: list[Rect]) -> Region:
@@ -361,8 +397,17 @@ def _attachments(
         if picked is not None:
             host, span = picked
             width = terrace.width_m or span.w
-            x0 = max(0.0, span.x0 + (span.w - width) / 2)
-            x1 = min(sk.W, x0 + width)
+            # Within the stretch of the main bar's garden facade its host is on (a wing stands
+            # beside it: one stretch for an L, one on each side for a T).
+            gx0, gx1 = next(
+                (r for r in sk.garden_ranges if r[0] - EPS <= span.x0 and span.x1 <= r[1] + EPS),
+                sk.garden_x,
+            )
+            half = config.exterior_wall_thickness / 2
+            lo = gx0 + (half if gx0 > EPS else 0.0)
+            hi = gx1 - (half if gx1 < sk.W - EPS else 0.0)
+            x0 = max(lo, span.x0 + (span.w - width) / 2)
+            x1 = min(hi, x0 + width)
             x0, x1 = snap(x0, config.grid), snap(x1, config.grid)
             rect = Rect(x0, sk.D, x1, rnd(sk.D + terrace.depth_m))
             out.append(Attachment("terrace", 0, 0, host.key, rect, "north"))

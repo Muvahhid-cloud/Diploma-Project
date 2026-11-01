@@ -1,13 +1,17 @@
 """Plain data structures shared by the planner (abstract plan) and the builder (elements).
 
 Plan coordinates are level-plan meters on wall centerlines: x east, y north, street on the south
-(y = 0). The house footprint is the rectangle [0, W] x [0, D]; an attached garage sits outside it
-on the ground floor, balconies and terraces outside it on the garden or street side.
+(y = 0). The house footprint is the rectangle [0, W] x [0, D] (topology "rect"), or that main
+bar plus a wing on the garden side (single storey): at its west or east end (topology "l",
+docs/3d-engine.md §16.10) or from its middle (topology "t", §16.12). The wing spans x in
+`wing_x` and y in [D, D + wing_length]. An
+attached garage sits outside the footprint on the ground floor, balconies and terraces outside
+it on the garden or street side.
 """
 
 import math
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from app.modules.building.enums import RoomType, Zone
 from app.modules.layout.program import RoomRequest
@@ -84,10 +88,81 @@ class Skeleton:
     hall_x1: float
     hall_side: Literal["west", "east"]  # side of the hall part relative to the core
     garage_side: Literal["west", "east"] | None
+    # L / T topology (single storey): a wing of `wing_depth` rooms plus a gallery corridor (C)
+    # beside them, reaching `wing_length` beyond the main bar's garden facade. L: the wing at
+    # the `wing_side` end, its rooms on the outer side. T: the wing starts at x = `wing_x0`
+    # (both main-bar ends stay free), its rooms on its `wing_side` half.
+    topology: Literal["rect", "l", "t"] = "rect"
+    wing_side: Literal["west", "east"] | None = None
+    wing_depth: float = 0.0
+    wing_length: float = 0.0
+    wing_x0: float = 0.0  # T only
 
     @property
     def Dn(self) -> float:  # noqa: N802 - plan dimension name
         return rnd(self.D - self.Ds - self.C)
+
+    @property
+    def is_l(self) -> bool:
+        return self.topology == "l"
+
+    @property
+    def has_wing(self) -> bool:
+        """L or T: a wing beyond the main bar's garden facade."""
+        return self.topology in ("l", "t")
+
+    @property
+    def wing_width(self) -> float:
+        """Wing rooms + gallery corridor (x extent of the wing)."""
+        return rnd(self.wing_depth + self.C) if self.has_wing else 0.0
+
+    @property
+    def depth_total(self) -> float:
+        return rnd(self.D + self.wing_length) if self.has_wing else self.D
+
+    @property
+    def footprint_area(self) -> float:
+        """Area enclosed by the exterior wall centerlines of one storey."""
+        return self.W * self.D + self.wing_width * self.wing_length
+
+    @property
+    def wing_x(self) -> tuple[float, float]:
+        """x-range of the wing (rooms + gallery)."""
+        if self.topology == "t":
+            return self.wing_x0, rnd(self.wing_x0 + self.wing_width)
+        if self.wing_side == "west":
+            return 0.0, self.wing_width
+        return rnd(self.W - self.wing_width), self.W
+
+    @property
+    def wing_rooms_x(self) -> tuple[float, float]:
+        """x-range of the wing's room band (L: the outer side; T: the `wing_side` half)."""
+        x0, x1 = self.wing_x
+        if self.wing_side == "west":
+            return x0, rnd(x0 + self.wing_depth)
+        return rnd(x1 - self.wing_depth), x1
+
+    @property
+    def gallery_x(self) -> tuple[float, float]:
+        """x-range of the wing's corridor (beside its rooms; L: the inner, garden side)."""
+        x0, x1 = self.wing_x
+        if self.wing_side == "west":
+            return rnd(x0 + self.wing_depth), x1
+        return x0, rnd(x1 - self.wing_depth)
+
+    @property
+    def garden_ranges(self) -> list[tuple[float, float]]:
+        """x-ranges over which the main bar's north (garden) wall is a facade, west first:
+        rect one, L one (beside the wing), T two (either side of the wing)."""
+        if not self.has_wing:
+            return [(0.0, self.W)]
+        x0, x1 = self.wing_x
+        return [r for r in ((0.0, x0), (x1, self.W)) if r[1] - r[0] > EPS]
+
+    @property
+    def garden_x(self) -> tuple[float, float]:
+        """The (longest) x-range of the main bar's garden facade."""
+        return max(self.garden_ranges, key=lambda r: (r[1] - r[0], -r[0]))
 
     @property
     def core_x1(self) -> float:
@@ -114,25 +189,39 @@ class Skeleton:
         return x0, rnd(x0 + self.lane_width)
 
 
-Side = Literal["north", "south"]
+Side = Literal["north", "south", "wing"]
 
 
 @dataclass(frozen=True)
 class Strip:
-    name: Literal["N", "SL", "SR"]
+    """A band of rooms laid side by side along `axis`, each spanning the band's depth from the
+    corridor to the facade. Bands along x: north (corridor at y0) and south (corridor at y1);
+    the L wing's band runs along y with the gallery corridor at its inner x edge."""
+
+    name: Literal["N", "N2", "SL", "SR", "WG"]  # N2: the T's second garden band
     x0: float
     x1: float
     y0: float
     y1: float
     side: Side  # facade side of the strip
+    axis: Literal["x", "y"] = "x"  # direction the rooms are laid along
+    corridor_low: bool = True  # the corridor is on the low-coordinate edge across the band
+    # Width of the corridor beside the band that the band's last room may wrap across (the L
+    # wing's gallery, V1.2): that corridor then ends a door's width into the last room.
+    end_wrap_depth: float = 0.0
 
     @property
     def length(self) -> float:
-        return rnd(self.x1 - self.x0)
+        return rnd(self.x1 - self.x0) if self.axis == "x" else rnd(self.y1 - self.y0)
 
     @property
     def depth(self) -> float:
-        return rnd(self.y1 - self.y0)
+        return rnd(self.y1 - self.y0) if self.axis == "x" else rnd(self.x1 - self.x0)
+
+    @property
+    def start(self) -> float:
+        """Plan coordinate where the first room of the band starts (along the axis)."""
+        return self.x0 if self.axis == "x" else self.y0
 
 
 ColumnKind = Literal["main", "tuck", "full"]
@@ -151,6 +240,36 @@ class Column:
 class StripLayout:
     strip: Strip
     columns: list[Column]
+    # > 0: the last column's room wraps across the corridor beside the band
+    # (strip.end_wrap_depth) from this distance after its start; the corridor stops there, so
+    # the room's door sits on that stretch (docs/3d-engine.md §16.10).
+    wrap_from: float = 0.0
+    # The ordered units the band was laid out from (planner.Unit; V5 re-lays the chosen
+    # candidate's bands on the facade bays from them). Not part of the plan's geometry.
+    units: tuple[Any, ...] = ()
+
+    @property
+    def corridor_end(self) -> float:
+        """Plan coordinate (along the band) where the corridor beside the band ends."""
+        if self.wrap_from <= 0.0:
+            return rnd(self.strip.start + self.strip.length)
+        return rnd(self.strip.start + sum(c.width for c in self.columns[:-1]) + self.wrap_from)
+
+
+@dataclass(frozen=True)
+class CorridorCut:
+    """A dead end of the main corridor, [x0, x1] x [Ds, Ds + C], given to the room `owner`
+    (L plans, V1.2, docs/3d-engine.md §16.10). The corridor still reaches every door; `joins`
+    are the two rooms that now share a wall where the corridor used to separate them."""
+
+    x0: float
+    x1: float
+    owner: str
+    joins: tuple[str, str]
+
+    @property
+    def length(self) -> float:
+        return rnd(self.x1 - self.x0)
 
 
 @dataclass
@@ -158,6 +277,7 @@ class LevelLayout:
     index: int
     strips: list[StripLayout]
     merged_strips: list[Strip] = field(default_factory=list)  # empty strips given to circulation
+    cuts: list[CorridorCut] = field(default_factory=list)  # corridor dead ends given to rooms
 
 
 @dataclass
@@ -228,3 +348,55 @@ def lane_faces(
     t1 = exterior if abs(x1 - sk.W) < EPS else interior
     # (x0 + t0/2 + x1 - t1/2) / 2, written so that a symmetric lane gives exactly its middle.
     return x0 + t0 / 2, x1 - t1 / 2, (x0 + x1) / 2 + (t0 - t1) / 4
+
+
+def envelope(
+    sk: Skeleton, pitched: bool
+) -> list[tuple[str, tuple[float, float], tuple[float, float], str]]:
+    """Exterior wall loop of one storey, counter-clockwise: (key suffix, start, end, roof).
+
+    Rectangle: S, E, N, W. L (docs/3d-engine.md §16.10): the main bar's walls keep their keys
+    (S, E, N = the garden wall beside the wing, W/E = the outer wall below the wing) and the
+    wing adds `wing:*` walls; the outer side is split where the wing starts so each wall
+    belongs to one volume and supports one roof (a pitched L has a main and a wing roof).
+    T (§16.12): S, E, then the garden wall east of the wing (N:E), the wing (stem) walls,
+    the garden wall west of it (N:W), W - eight walls, two inside corners."""
+    W, D = sk.W, sk.D  # noqa: N806 - plan dimension names, as on Skeleton
+    if not sk.has_wing:
+        corners = [(0.0, 0.0), (W, 0.0), (W, D), (0.0, D)]
+        return [
+            (side, corners[i], corners[(i + 1) % 4], "roof:main") for i, side in enumerate("SENW")
+        ]
+    wing_roof = "roof:wing" if pitched else "roof:main"
+    top = sk.depth_total
+    x0, x1 = sk.wing_x
+    if sk.topology == "t":
+        return [
+            ("S", (0.0, 0.0), (W, 0.0), "roof:main"),
+            ("E", (W, 0.0), (W, D), "roof:main"),
+            ("N:E", (W, D), (x1, D), "roof:main"),
+            ("wing:E", (x1, D), (x1, top), wing_roof),
+            ("wing:N", (x1, top), (x0, top), wing_roof),
+            ("wing:W", (x0, top), (x0, D), wing_roof),
+            ("N:W", (x0, D), (0.0, D), "roof:main"),
+            ("W", (0.0, D), (0.0, 0.0), "roof:main"),
+        ]
+    if sk.wing_side == "west":
+        return [
+            ("S", (0.0, 0.0), (W, 0.0), "roof:main"),
+            ("E", (W, 0.0), (W, D), "roof:main"),
+            ("N", (W, D), (x1, D), "roof:main"),
+            ("wing:E", (x1, D), (x1, top), wing_roof),
+            ("wing:N", (x1, top), (0.0, top), wing_roof),
+            ("wing:W", (0.0, top), (0.0, D), wing_roof),
+            ("W", (0.0, D), (0.0, 0.0), "roof:main"),
+        ]
+    return [
+        ("S", (0.0, 0.0), (W, 0.0), "roof:main"),
+        ("E", (W, 0.0), (W, D), "roof:main"),
+        ("wing:E", (W, D), (W, top), wing_roof),
+        ("wing:N", (W, top), (x0, top), wing_roof),
+        ("wing:W", (x0, top), (x0, D), wing_roof),
+        ("N", (x0, D), (0.0, D), "roof:main"),
+        ("W", (0.0, D), (0.0, 0.0), "roof:main"),
+    ]

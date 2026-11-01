@@ -5,6 +5,12 @@
                   -> errors? one repair call with the issues -> validate again
                   -> still invalid: InterpretationError (never accepted silently)
 
+Before validation the footprint shape's priority is read from the user's own words
+(building/footprint.py normalize_shape_requirement), whichever model answered. Issues that
+describe what the engine cannot build for the user's request (USER_LIMITS, e.g. a required
+U-shaped footprint) are not sent back for repair: a repair could only drop or soften the
+request. The interpretation fails with that reason instead (SPEC_UNSUPPORTED).
+
 No database, no layout: the caller passes a `validate_spec` callback, so this module depends
 only on the building schemas. Every provider call is recorded as an `AttemptRecord` (persisted
 as an `ai_runs` row by the caller), also when the interpretation fails.
@@ -28,6 +34,7 @@ from app.modules.ai.schemas.generation import (
     SpecificationDraft,
 )
 from app.modules.ai.structured import AITask, RepairInput, StructuredResult
+from app.modules.building.footprint import normalize_shape_requirement
 from app.modules.building.issues import Issue, errors, pointer
 from app.modules.building.requirements import changed_facts, spec_facts
 from app.modules.building.specification import BuildingSpecification
@@ -77,7 +84,8 @@ class InterpretationError(Exception):
     """The request could not be turned into a valid specification.
 
     code: AI_UNAVAILABLE | AI_TIMEOUT | AI_NOT_CONFIGURED (provider), AI_INVALID_OUTPUT (no
-    usable JSON after repair), SPEC_INVALID (schema or rules errors after repair)."""
+    usable JSON after repair), SPEC_INVALID (schema or rules errors after repair),
+    SPEC_UNSUPPORTED (the request needs something the engine cannot build; no repair)."""
 
     def __init__(
         self, code: str, message: str, issues: list[Issue], attempts: list[AttemptRecord]
@@ -89,12 +97,22 @@ class InterpretationError(Exception):
         self.attempts = attempts
 
 
+# Tier-2 error codes that describe the user's request, not a mistake of the model: never
+# "repaired" (that could only drop or soften what the user asked for).
+USER_LIMITS = frozenset({"SPEC_FOOTPRINT_UNSUPPORTED"})
+
+
 @dataclass
 class _Checked:
     draft: SpecificationDraft | None
     spec_issues: list[Issue]  # tier-2 issues, spec-relative paths
     blocking: list[Issue]  # what must be repaired (paths into the model's answer)
     schema_failure: bool
+    notes: list[str] = field(default_factory=list)  # deterministic normalizations applied
+
+    @property
+    def user_limits(self) -> list[Issue]:
+        return [i for i in errors(self.spec_issues) if i.code in USER_LIMITS]
 
 
 def check_options(spec: BuildingSpecification, options: GenerationOptions | None) -> list[Issue]:
@@ -169,11 +187,15 @@ def _check(result: StructuredResult, validate_spec: SpecValidator) -> _Checked:
         return _Checked(None, [], _pydantic_issues(exc), schema_failure=True)
     if draft.outcome is InterpretationOutcome.CLARIFICATION or draft.specification is None:
         return _Checked(draft, [], [], schema_failure=False)
-    spec_issues = validate_spec(draft.specification)
+    spec, note = normalize_shape_requirement(draft.specification)
+    draft = draft.model_copy(update={"specification": spec})
+    spec_issues = validate_spec(spec)
     blocking = [
         i.model_copy(update={"path": "/specification" + i.path}) for i in errors(spec_issues)
     ]
-    return _Checked(draft, spec_issues, blocking, schema_failure=False)
+    return _Checked(
+        draft, spec_issues, blocking, schema_failure=False, notes=[note] if note else []
+    )
 
 
 def _record(
@@ -252,7 +274,7 @@ async def interpret(
     first = checked
 
     repairs = 0
-    while checked.blocking and repairs < max_repairs:
+    while checked.blocking and not checked.user_limits and repairs < max_repairs:
         repairs += 1
         await stage("repairing")
         repair = RepairInput(
@@ -266,6 +288,13 @@ async def interpret(
             _record(provider, AITask.REPAIR_SPECIFICATION, PROMPT_VERSION, result, checked)
         )
 
+    if checked.user_limits:
+        raise InterpretationError(
+            "SPEC_UNSUPPORTED",
+            "The requested building cannot be generated: " + checked.user_limits[0].message,
+            checked.user_limits,
+            attempts,
+        )
     if checked.blocking or checked.draft is None:
         if checked.schema_failure:
             raise InterpretationError(
@@ -284,6 +313,7 @@ async def interpret(
     draft = checked.draft
     warnings = [_warn("AI_REQUIREMENT_CONFLICT", c) for c in draft.conflicts]
     warnings += [_warn("AI_UNSUPPORTED_REQUEST", u) for u in draft.unsupported_requests]
+    warnings += [_warn("AI_SHAPE_PRIORITY", n) for n in checked.notes]
     if (
         repairs
         and draft.specification is not None

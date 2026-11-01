@@ -11,7 +11,9 @@ from tests.catalog.helpers import (
     BOOK_DIR,
     BOOK_PACK,
     CORE_PACK,
+    DESIGN_PACK,
     GENERIC_PACK,
+    PATTERN_PACK,
     codes,
     copy_data,
     edit_yaml,
@@ -23,7 +25,13 @@ from tests.catalog.helpers import (
 
 def test_repository_knowledge_loads_and_is_locked() -> None:
     registry = real_registry()
-    assert sorted(registry.packs) == [GENERIC_PACK, CORE_PACK, BOOK_PACK]
+    assert sorted(registry.packs) == [
+        DESIGN_PACK,
+        GENERIC_PACK,
+        PATTERN_PACK,
+        CORE_PACK,
+        BOOK_PACK,
+    ]
     assert sorted(registry.sources) == ["buildai-editorial", "georgievsky-2004"]
     assert sorted(registry.regions) == ["generic@1"]
     assert verify_lock(DATA_DIR / "knowledge") == []

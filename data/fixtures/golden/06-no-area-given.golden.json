@@ -1,5 +1,5 @@
 {
-  "engine_version": "layout@1.2.0",
+  "engine_version": "layout@1.15.0",
   "seed": 0,
   "footprint_m": [
     5.8,
@@ -18,19 +18,62 @@
     "terraces": 0,
     "walls": 16,
     "doors": 8,
-    "windows": 15,
-    "elements": 71
+    "windows": 18,
+    "elements": 77,
+    "facade_colors": [],
+    "windows_by_facade": {
+      "front": {
+        "standard": 1
+      },
+      "left": {
+        "standard": 2
+      },
+      "rear": {
+        "standard": 3
+      },
+      "right": {
+        "standard": 2
+      }
+    },
+    "rooms_on_facade": {
+      "front": [
+        "room:bathroom",
+        "room:bedroom_3",
+        "room:hall_0",
+        "room:wc"
+      ],
+      "left": [
+        "room:bedroom_2",
+        "room:corridor_0",
+        "room:corridor_1",
+        "room:hall_0",
+        "room:kitchen_living"
+      ],
+      "rear": [
+        "room:bedroom_1",
+        "room:bedroom_2",
+        "room:kitchen_living"
+      ],
+      "right": [
+        "room:bathroom",
+        "room:bedroom_1",
+        "room:corridor_0",
+        "room:corridor_1",
+        "room:kitchen_living",
+        "room:wc"
+      ]
+    }
   },
   "element_counts": {
     "door": 8,
-    "furniture": 18,
+    "furniture": 20,
     "railing": 1,
     "roof": 1,
     "room": 9,
-    "slab": 2,
+    "slab": 3,
     "stair": 1,
     "wall": 16,
-    "window": 15
+    "window": 18
   },
   "rooms": [
     {
@@ -89,6 +132,6 @@
     }
   ],
   "warnings": [],
-  "model_sha256": "fd9772972ff72ef2184b8ff44137676e65b9e5ffc7a3da0da274b654e9e8e984",
-  "geometry_sha256": "5e32714e3c1abdf066f0dcc93a91708e25f93e232afa03d2bcc053876704093a"
+  "model_sha256": "10536826efaaca9f4747eb001c7b446059849d169e7a842c88f255e4f08f294e",
+  "geometry_sha256": "a47eb871526e479d053be4d1de32c8f55093cd6e976bddce4ef0cdc33d8f1521"
 }

@@ -29,7 +29,42 @@ SPEC_PROMPTS = [
     "classic brick three-storey house of 360 sqm with 5 bedrooms, 4 bathrooms, study, laundry "
     "and 2 balconies",
     "Scandinavian timber cottage, 120 m², 2 bedrooms, guest WC, pitched roof",
+    # K3 design intent
+    "Modern two-story house of 200 m² with 3 bedrooms. Make the exterior walls yellow. "
+    "Large panoramic windows facing the garden, not on the street side. The living room "
+    "should face the backyard.",
+    "Single-storey 140 m2 bungalow with 2 bedrooms, light grey facade and big windows on "
+    "the right side",
 ]
+
+
+def test_design_intent_is_interpreted() -> None:
+    d = draft(SPEC_PROMPTS[-2])
+    assert d.specification is not None
+    spec = d.specification
+    assert spec.design.facade_color == "yellow"
+    assert spec.design.windows is not None
+    assert spec.design.windows.emphasis == "panoramic"
+    assert spec.design.windows.preferred_facades == ["rear"]
+    assert spec.design.windows.excluded_facades == ["front"]
+    assert spec.style.window_style == "standard"  # emphasis stays on the named facade
+    living = next(r for r in spec.rooms if r.key == "living")
+    assert living.faces == "rear"
+
+
+def test_color_synonyms_and_side_facades() -> None:
+    d = draft(SPEC_PROMPTS[-1])
+    assert d.specification is not None
+    assert d.specification.design.facade_color == "light_grey"
+    windows = d.specification.design.windows
+    assert windows is not None and windows.emphasis == "large"
+    assert windows.preferred_facades == ["right"] and windows.excluded_facades == []
+
+
+def test_plain_large_windows_stay_building_wide() -> None:
+    d = draft(DEMO_PROMPT)
+    assert d.specification is not None
+    assert d.specification.design.windows is None and d.specification.design.facade_color is None
 
 
 def draft(prompt: str, options: GenerationOptions | None = None) -> SpecificationDraft:
@@ -58,7 +93,29 @@ def test_demo_prompt_is_interpreted_faithfully() -> None:
     assert d.conflicts == [] and d.unsupported_requests == []
 
 
-@pytest.mark.parametrize("prompt", SPEC_PROMPTS)
+# Design Intelligence V1 (spec 1.2.0): room sizes, relations, priorities, plots. The
+# deliberately conflicting benchmark request is not here (it must fail, see tests/evals).
+INTENT_PROMPTS = [
+    "I want a 40 m2 living room in a two-storey 220 m2 house with 3 bedrooms",
+    "Modern two-storey house of 220 m2 with 4 bedrooms: a 40 m2 living room, a kitchen of 16 m2 "
+    "and a master bedroom of at least 20 m2.",
+    "Two-storey 180 m2 house with 3 bedrooms; the kitchen must be next to the dining room",
+    "Single-storey house of 160 m2 with 3 bedrooms and 2 bathrooms. The bedrooms must be "
+    "separated from the living spaces for privacy.",
+    "Narrow urban plot 8 m wide and 30 m deep: a two-storey townhouse of 140 m2 with 3 bedrooms "
+    "and the kitchen next to the dining room.",
+    "Two-storey family house of 180 m2 with 3 bedrooms and an open-plan living, dining and "
+    "kitchen area.",
+    "Compact single-storey family home of 95 m2 with 2 bedrooms, 1 bathroom and an open "
+    "kitchen-living room. Space-efficient circulation is important.",
+    # V1.1: L-shaped footprints
+    "A single-storey L-shaped house of 170 m2 with 3 bedrooms and 2 bathrooms.",
+    "L-shaped single-storey house of 160 m2 with 3 bedrooms; the kitchen must be next to the "
+    "dining room.",
+]
+
+
+@pytest.mark.parametrize("prompt", SPEC_PROMPTS + INTENT_PROMPTS)
 def test_mock_specs_validate_and_lay_out(prompt: str) -> None:
     """NL -> mock -> spec -> rules -> layout -> valid model for every supported prompt."""
     d = draft(prompt)

@@ -1,3 +1,4 @@
+import { coloredMaterialKey } from "../materials/material-cache";
 import { elementMatrix, wallThicknessRange } from "../math/transform";
 import type { Wall } from "../model/types";
 import { contentKey, part } from "./common";
@@ -24,11 +25,18 @@ export function buildWall(wall: Wall, ctx: BuildContext): RenderDescriptor[] {
   }));
   const [v0, v1] = wallThicknessRange(wall);
   const core = wall.material_id ?? MISSING;
+  // Face finishes, drawn in their display color when the model sets one (K3 appearance).
   const faces = {
     px: core,
     nx: core,
-    py: wall.properties.finish_left_id ?? core,
-    ny: wall.properties.finish_right_id ?? core,
+    py: coloredMaterialKey(
+      wall.properties.finish_left_id ?? core,
+      wall.properties.finish_left_color,
+    ),
+    ny: coloredMaterialKey(
+      wall.properties.finish_right_id ?? core,
+      wall.properties.finish_right_color,
+    ),
     pz: core,
     nz: core,
   };

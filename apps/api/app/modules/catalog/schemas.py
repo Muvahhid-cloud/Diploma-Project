@@ -296,6 +296,7 @@ class PackContents(KnowledgeModel):
     glossary: list[ShortText] = Field(default_factory=list)
     drawing_profiles: list[ShortText] = Field(default_factory=list)
     components: list[ShortText] = Field(default_factory=list)  # families/types/assemblies (K2)
+    patterns: list[ShortText] = Field(default_factory=list)  # layout patterns (Design Intel. V1)
 
     def files(self) -> list[str]:
         return [
@@ -304,6 +305,7 @@ class PackContents(KnowledgeModel):
             *self.glossary,
             *self.drawing_profiles,
             *self.components,
+            *self.patterns,
         ]
 
 

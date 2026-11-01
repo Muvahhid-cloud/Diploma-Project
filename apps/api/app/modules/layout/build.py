@@ -5,9 +5,10 @@ uuid5(id_namespace, semantic_key) unless the caller supplies ids of a previous m
 semantic keys (ID stability across regeneration, docs/building-model.md §7).
 """
 
+import itertools
 import math
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -16,6 +17,13 @@ from shapely import Polygon as ShapelyPolygon
 from shapely import box, unary_union
 from shapely.geometry.polygon import orient
 
+from app.modules.building.design import (
+    DesignRecord,
+    DesignSystemSnapshot,
+    finishes_of,
+    furniture_substitution,
+    resolve_window_preferences,
+)
 from app.modules.building.elements import (
     Door,
     DoorDimensions,
@@ -58,6 +66,7 @@ from app.modules.building.enums import (
     WallKind,
     WindowKind,
 )
+from app.modules.building.facades import PLAN_SIDE, facade_of_normal
 from app.modules.building.geometry import Point, segment_overlap_length
 from app.modules.building.hosting import free_intervals, junction_zones
 from app.modules.building.model import (
@@ -68,7 +77,13 @@ from app.modules.building.model import (
     ModelMetadata,
 )
 from app.modules.building.primitives import EPS, Rotation, Vec2, Vec3
-from app.modules.building.specification import BuildingSpecification, FinishLevel, WindowStyle
+from app.modules.building.specification import (
+    ArchitecturalStyle,
+    BuildingSpecification,
+    DesignPriority,
+    FinishLevel,
+    WindowStyle,
+)
 from app.modules.building.types import (
     AssemblySnapshot,
     DoorTypeParams,
@@ -78,11 +93,13 @@ from app.modules.building.types import (
     TypeSnapshot,
     WindowTypeParams,
 )
+from app.modules.layout.bays import Bays, facade_lines
 from app.modules.layout.config import LayoutConfig
 from app.modules.layout.furnish import furnish
-from app.modules.layout.plan import Rect, Region, Segment, lane_faces, rnd
+from app.modules.layout.plan import Rect, Region, Segment, envelope, lane_faces, rnd
 from app.modules.layout.program import HABITABLE, WET
 from app.modules.layout.regions import (
+    LevelRegions,
     PlanLayout,
     derive_interior_walls,
     facade_span,
@@ -181,6 +198,7 @@ class WallPlan:
     left: str
     right: str
     supports: list[str] = field(default_factory=list)
+    right_color: str | None = None  # display color of the right (exterior) face, K3
     occupied: list[tuple[float, float]] = field(default_factory=list)
     # Where other walls join or cross this one (building.hosting.junction_zones); openings
     # stay out of them. Set once all walls of the level exist.
@@ -217,11 +235,12 @@ class WallPlan:
         margin: float,
         prefer: Literal["center", "low", "high"] = "center",
         gap: float = 0.15,
+        center: float | None = None,
     ) -> float | None:
         """Offset of an opening of `width` within `seg` (plan coordinates along the wall),
         keeping `gap` from existing openings and clear of wall junctions (the same interval
         arithmetic the geometric checks validate with). `low`/`high` prefer the smaller/larger
-        plan coordinate."""
+        plan coordinate; `center` (a plan coordinate) centres the opening there when free."""
         p0, p1 = self.param(seg.a0), self.param(seg.a1)
         lo, hi = max(min(p0, p1) + margin, 0.0), min(max(p0, p1) - margin, self.length)
         if hi - lo < width - 1e-6:
@@ -231,7 +250,9 @@ class WallPlan:
         if not fits:
             return None
         increasing = self.param(seg.a1) >= self.param(seg.a0)
-        if prefer == "center":
+        if center is not None:  # a plan coordinate to centre on (facade axes, V3)
+            want = self.param(center) - width / 2
+        elif prefer == "center":
             want = (lo + hi - width) / 2
         else:
             at_low_param = (prefer == "low") == increasing
@@ -259,6 +280,15 @@ class _Context:
     room_polys: dict[tuple[int, str], ShapelyPolygon] = field(default_factory=dict)
     counters: dict[str, int] = field(default_factory=dict)
     swing: int = 0
+    design: DesignRecord | None = None  # effective design (K3); None = generic, no intent
+
+    @property
+    def system(self) -> DesignSystemSnapshot | None:
+        return self.design.design_system if self.design is not None else None
+
+    @property
+    def facade_color(self) -> str | None:
+        return self.design.facade_color.hex if self.design and self.design.facade_color else None
 
     def next_name(self, prefix: str, level: int) -> str:
         key = f"{prefix}{level + 1}"
@@ -295,27 +325,75 @@ def _rel(kind: RelationshipKind, target: uuid.UUID) -> Relationship:
 # --- walls --------------------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class FacadeZones:
+    """Visible facade finishes of a generated house (V3, LayoutConfig.facade_zoning)."""
+
+    style: ArchitecturalStyle
+    main: str  # finish of every exterior wall not in a zone below
+    plinth: str | None  # ground storey of multi-storey houses
+    accent: str | None  # the garage volume
+
+    def describe(self, has_garage: bool) -> str | None:
+        def name(material: str) -> str:
+            return material.replace("_", " ")
+
+        parts = []
+        if self.plinth:
+            parts.append(
+                f"ground storey in {name(self.plinth)}, upper storeys in {name(self.main)}"
+            )
+        if self.accent and has_garage:
+            parts.append(f"garage clad in {name(self.accent)}")
+        if not parts:
+            return None
+        return f"Facade zoning ({self.style.value}): " + "; ".join(parts) + "."
+
+
+def facade_zones(
+    spec: BuildingSpecification,
+    system: DesignSystemSnapshot | None,
+    config: LayoutConfig,
+    storeys: int,
+    color: str | None,
+) -> FacadeZones:
+    """Main facade finish plus the style's zones. A requested facade color covers the whole
+    facade, so it disables zoning; a zone equal to the main finish is no zone."""
+    style = system.style_tags[0] if system is not None else spec.style.architectural_style
+    main = config.facade_finishes[spec.style.facade_material]
+    rule = config.facade_zoning.get(style)
+    if color is not None or rule is None:
+        return FacadeZones(style, main, None, None)
+    plinth = rule.plinth if storeys > 1 and rule.plinth != main else None
+    accent = rule.accent if rule.accent != main else None
+    return FacadeZones(style, main, plinth, accent)
+
+
 def _walls(ctx: _Context) -> None:
     sk, cfg = ctx.plan.skeleton, ctx.config
     facade = cfg.facade_materials[ctx.spec.style.facade_material]
+    color = ctx.facade_color  # appearance only: the facade material is unchanged
+    finishes = finishes_of(ctx.system)
     top = sk.storeys - 1
+    pitched = ctx.spec.style.roof.type != RoofType.FLAT
+    zones = facade_zones(ctx.spec, ctx.system, cfg, sk.storeys, color)
     for lv in range(sk.storeys):
-        corners = [(0.0, 0.0), (sk.W, 0.0), (sk.W, sk.D), (0.0, sk.D)]
-        supports = [f"slab:L{lv + 1}"] if lv < top else ["roof:main"]
-        for i, side in enumerate("SENW"):
+        face = zones.plinth if lv == 0 and zones.plinth else zones.main
+        for side, start, end, roof in envelope(sk, pitched):
             ctx.walls.append(
                 WallPlan(
                     key=f"wall:ext:L{lv}:{side}",
                     name=ctx.next_name("W", lv),
                     level=lv,
-                    start=corners[i],
-                    end=corners[(i + 1) % 4],
+                    start=start,
+                    end=end,
                     kind=WallKind.EXTERIOR,
                     thickness=cfg.exterior_wall_thickness,
                     material=facade,
-                    left="interior_wall",
-                    right=facade,
-                    supports=list(supports),
+                    left=finishes.interior_wall,
+                    right=face,
+                    supports=[f"slab:L{lv + 1}"] if lv < top else [roof],
+                    right_color=color,
                 )
             )
         if lv == 0 and ctx.plan.garage is not None:
@@ -344,15 +422,16 @@ def _walls(ctx: _Context) -> None:
                         kind=WallKind.EXTERIOR,
                         thickness=cfg.exterior_wall_thickness,
                         material=facade,
-                        left="interior_wall",
-                        right=facade,
+                        left=finishes.interior_wall,
+                        right=zones.accent or face,
                         supports=["roof:garage"],
+                        right_color=color,
                     )
                 )
         level = ctx.plan.levels[lv]
         types = {r.key: r.room_type for r in level.regions}
         seen: dict[str, int] = {}
-        for run in derive_interior_walls(level, sk.W, sk.D):
+        for run in derive_interior_walls(level, sk.W, sk.depth_total):
             lo_key, hi_key, _ = max(run.pieces, key=lambda p: (p[2], p[0], p[1]))
             base = f"wall:L{lv}:{lo_key}|{hi_key}"
             seen[base] = seen.get(base, 0) + 1
@@ -377,8 +456,8 @@ def _walls(ctx: _Context) -> None:
                     kind=WallKind.INTERIOR,
                     thickness=cfg.interior_wall_thickness,
                     material="interior_wall",
-                    left="tile" if left_tile else "interior_wall",
-                    right="tile" if right_tile else "interior_wall",
+                    left=finishes.wet_wall if left_tile else finishes.interior_wall,
+                    right=finishes.wet_wall if right_tile else finishes.interior_wall,
                 )
             )
 
@@ -401,10 +480,6 @@ def _wall_on(ctx: _Context, level: int, seg: Segment) -> WallPlan:
         if w.level == level and w.covers(seg):
             return w
     raise BuildError(f"No wall along {seg} on floor {level + 1}")
-
-
-def _facade_wall(ctx: _Context, level: int, side: str) -> WallPlan:
-    return next(w for w in ctx.walls if w.key == f"wall:ext:L{level}:{side}")
 
 
 # --- openings -----------------------------------------------------------------------------------
@@ -434,6 +509,7 @@ class _Window:
     kind: WindowKind
     mullions: int
     role: str  # type role (building/types.py TYPE_ROLES)
+    size_class: WindowStyle | None = None  # main windows of habitable rooms (K3)
 
 
 def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
@@ -454,13 +530,25 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
         prefer: Literal["center", "low", "high"] = "center",
         margin: float | None = None,
         role: str | None = None,
+        axes: Sequence[float] = (),
     ) -> None:
         wall = _wall_on(ctx, level, seg)
         if size[1] > ctx.wall_height + 1e-6:  # guaranteed by engine.opening_fit_issues
             raise BuildError(f"Door {key} ({size[1]} m) is taller than the walls")
         margin = cfg.door_margin if margin is None else margin
         width = size[0]
-        offset = wall.place(seg, width, margin=margin, prefer=prefer)
+        offset = None
+        # Facade grid (V4): stand under a window axis of the storey above, at full width only.
+        mid = (seg.a0 + seg.a1) / 2
+        for axis in sorted(axes, key=lambda a: (abs(a - mid), a)):
+            offset = wall.place(seg, width, margin=margin, center=axis)
+            if offset is not None and abs(wall.param(axis) - (offset + width / 2)) <= 1e-3:
+                break
+            if offset is not None:
+                wall.occupied.pop()
+            offset = None
+        if offset is None:
+            offset = wall.place(seg, width, margin=margin, prefer=prefer)
         if offset is None and min_width < width:
             width = min_width
             offset = wall.place(seg, width, margin=margin, prefer=prefer)
@@ -574,6 +662,37 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
         )
 
     sliding = sizes["door.sliding"]
+
+    bays = _bay_grid(ctx)
+
+    def axes_above(level: int, side: Literal["north", "south"]) -> list[float]:
+        """Centres of the habitable rooms' facade spans on the storeys above `level`: where
+        their windows will stand (V4 facade grid; empty when the grid is off). With the bay
+        grid (V5) the facade's bay axes."""
+        if cfg.facade_grid_snap <= 0 and not cfg.facade_bays:
+            return []
+        line = bays.get((True, rnd(sk.D if side == "north" else 0.0)))
+        out: set[float] = set()
+        for lvl in ctx.plan.levels[level + 1 :]:
+            for r in lvl.regions:
+                if r.kind != "room" or r.room_type not in HABITABLE:
+                    continue
+                span = facade_span(r, side, sk)
+                if span is None:
+                    continue
+                # V5: the bay axes the room's windows will take, else (as V4) its centre.
+                inner = (
+                    [
+                        a
+                        for a in line.axes
+                        if span.x0 + cfg.window_margin < a < span.x1 - cfg.window_margin
+                    ]
+                    if line is not None
+                    else []
+                )
+                out.update(inner or [rnd((span.x0 + span.x1) / 2)])
+        return sorted(out)
+
     for att in ctx.plan.attachments:
         host = ctx.plan.levels[att.level].get(att.host)
         span = facade_span(host, att.side, sk) if host is not None else None
@@ -592,6 +711,7 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
             "glass",
             min_width=min(1.6, rnd(width)),
             margin=0.25,
+            axes=axes_above(att.level, att.side),
         )
     # Garden door from the main living space when there is no terrace.
     if not any(a.kind == "terrace" for a in ctx.plan.attachments):
@@ -623,60 +743,80 @@ def _openings(ctx: _Context) -> tuple[list[_Door], list[_Window]]:
                     "glass",
                     min_width=1.6,
                     margin=0.25,
+                    axes=axes_above(0, "north"),
                 )
             break
 
-    _windows(ctx, doors, windows)
+    _windows(ctx, doors, windows, bays)
     return doors, windows
 
 
 def _facade_segments(ctx: _Context, region: Region) -> list[tuple[str, Segment]]:
+    """Stretches of `region`'s boundary on the house's exterior walls, per wall, labelled with
+    the plan side the wall faces (S/N/W/E, from its outward normal). Each segment lies on one
+    exterior wall, so an opening placed in it has exactly one host."""
     sk = ctx.plan.skeleton
     garage = ctx.plan.garage
-    out: dict[str, list[tuple[float, float]]] = {"S": [], "N": [], "W": [], "E": []}
     if not region.inside:
         return []
-    for r in region.rects:
-        if abs(r.y0) < 1e-6:
-            out["S"].append((r.x0, r.x1))
-        if abs(r.y1 - sk.D) < 1e-6:
-            out["N"].append((r.x0, r.x1))
-        for side, x in (("W", r.x0), ("E", r.x1)):
-            limit = 0.0 if side == "W" else sk.W
-            if abs(x - limit) > 1e-6:
-                continue
-            lo, hi = r.y0, r.y1
-            blocked = (
-                region.level == 0
-                and garage is not None
-                and sk.garage_side == ("west" if side == "W" else "east")
-            )
-            if blocked and garage is not None:
-                lo = max(lo, garage.y1)
-            if hi - lo > 1e-6:
-                out[side].append((lo, hi))
     result: list[tuple[str, Segment]] = []
-    coords = {"S": 0.0, "N": sk.D, "W": 0.0, "E": sk.W}
-    for side, spans in out.items():
+    for wall in ctx.walls:
+        if wall.level != region.level or not wall.key.startswith("wall:ext:"):
+            continue
+        (sx, sy), (ex, ey) = wall.start, wall.end
+        side = PLAN_SIDE[facade_of_normal(ey - sy, sx - ex)]
+        orientation: Literal["h", "v"] = "h" if wall.horizontal else "v"
+        w0, w1 = sorted((sx, ex) if wall.horizontal else (sy, ey))
+        spans: list[tuple[float, float]] = []
+        for r in region.rects:
+            if wall.horizontal:
+                on = abs(r.y0 - wall.coord) < 1e-6 or abs(r.y1 - wall.coord) < 1e-6
+                lo, hi = max(r.x0, w0), min(r.x1, w1)
+            else:
+                on = abs(r.x0 - wall.coord) < 1e-6 or abs(r.x1 - wall.coord) < 1e-6
+                lo, hi = max(r.y0, w0), min(r.y1, w1)
+                blocked = (
+                    region.level == 0
+                    and garage is not None
+                    and sk.garage_side == ("west" if side == "W" else "east")
+                    and abs(wall.coord - (0.0 if side == "W" else sk.W)) < 1e-6
+                )
+                if blocked and garage is not None:
+                    lo = max(lo, garage.y1)
+            if on and hi - lo > 1e-6:
+                spans.append((lo, hi))
         merged: list[list[float]] = []
         for a, b in sorted(spans):
             if merged and abs(merged[-1][1] - a) < 1e-6:
                 merged[-1][1] = b
             else:
                 merged.append([a, b])
-        for a, b in merged:
-            result.append((side, Segment("h" if side in "SN" else "v", coords[side], a, b)))
-    return result
+        result += [(side, Segment(orientation, wall.coord, a, b)) for a, b in merged]
+    order = "SNWE"
+    return sorted(result, key=lambda s: (order.index(s[0]), s[1].coord, s[1].a0))
 
 
-def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
+def _windows(
+    ctx: _Context,
+    doors: list[_Door],
+    windows: list[_Window],
+    bays: Mapping[tuple[bool, float], Bays] | None = None,
+) -> None:
+    """Windows on the facades. Each facade has a size class (building.design
+    .resolve_window_preferences): without window intent every facade uses style.window_style
+    (the pre-K3 behaviour); with intent, preferred facades get the emphasised size and are
+    glazed first, excluded facades only standard windows. Placement uses the same host-wall
+    interval arithmetic the geometric checks validate with (WallPlan.place)."""
     sk, cfg, rules = ctx.plan.skeleton, ctx.config, ctx.profile
     wall_h = ctx.wall_height
-    style = ctx.spec.style.window_style
-    preset = cfg.window_presets[style]
-    ratio = max(preset.glazing_ratio, rules.windows.min_glazing_to_floor_ratio * 1.15)
+    by_facade = resolve_window_preferences(ctx.spec)
+    side_style = {PLAN_SIDE[f]: s for f, s in by_facade.items()}
+    intent = ctx.spec.design.windows
+    preferred_sides = {PLAN_SIDE[f] for f in intent.preferred_facades} if intent else set()
+    min_ratio = rules.windows.min_glazing_to_floor_ratio * 1.15
 
-    def dims(level: int) -> tuple[float, float]:
+    def dims(level: int, style: WindowStyle) -> tuple[float, float]:
+        preset = cfg.window_presets[style]
         sill = preset.sill
         if level > 0:
             sill = max(sill, rules.windows.guard_required_below_sill_m)
@@ -694,15 +834,48 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
         kind: WindowKind,
         mullions: int,
         role: str,
+        size_class: WindowStyle | None = None,
     ) -> float:
-        wall = _facade_wall(ctx, level, side)
+        wall = _wall_on(ctx, level, seg)
         width = rnd(width)
         if height <= 0 or sill + height > wall_h + 1e-6:  # no room under the wall top
             return 0.0
-        offset = wall.place(seg, width, margin=cfg.window_margin)
+        # Facade composition (V3): on upper storeys, stand on a window axis of the storeys
+        # below (V4 facade grid: of every storey placed before, top storey first) where one
+        # fits the segment; reuse its width when it is close and not smaller, so a facade
+        # column keeps one size.
+        center = None
+        if wall.kind == WallKind.EXTERIOR and (level > 0 or cfg.facade_grid_snap > 0):
+            lo, hi = sorted((seg.a0, seg.a1))
+            axes = sorted(
+                (
+                    (_plan_center(w), w.width)
+                    for w in windows
+                    if (w.wall.level != level if cfg.facade_grid_snap > 0 else w.wall.level < level)
+                    and w.wall.kind == WallKind.EXTERIOR
+                    and w.wall.horizontal == wall.horizontal
+                    and abs(w.wall.coord - wall.coord) < 1e-6
+                ),
+                key=lambda a: (abs(a[0] - (lo + hi) / 2), a[0]),
+            )
+            for axis, below in axes:
+                # Widest window centred on the axis inside the segment (5 cm grid); a window
+                # may narrow to 70 % for an axis (the remaining glazing goes to the next one).
+                room = 2 * min(axis - lo - cfg.window_margin, hi - cfg.window_margin - axis)
+                fit = math.floor(room / 0.05 + 1e-9) * 0.05
+                same = rnd(below) if width <= below <= width + 0.6 else width
+                for w_try in (same, width, min(width, fit)):
+                    if w_try <= fit + 1e-6 and w_try >= max(min_w, 0.7 * width) - 1e-6:
+                        center, width = axis, rnd(w_try)
+                        break
+                if center is not None:
+                    break
+        offset = wall.place(seg, width, margin=cfg.window_margin, center=center)
         if offset is None:
             return 0.0
-        windows.append(_Window(key, wall, offset, width, height, sill, kind, mullions, role))
+        windows.append(
+            _Window(key, wall, offset, width, height, sill, kind, mullions, role, size_class)
+        )
         return width * height
 
     def glazing_of(region: Region) -> float:
@@ -717,8 +890,179 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
         return total
 
     min_w = rules.windows.min_width_m
-    for level in ctx.plan.levels:
+    grid = bays or {}
+
+    def line_of(wall: WallPlan) -> Bays | None:
+        return (
+            grid.get((wall.horizontal, rnd(wall.coord))) if wall.kind == WallKind.EXTERIOR else None
+        )
+
+    def on_bay(
+        key: str,
+        level: int,
+        seg: Segment,
+        width: float,
+        height: float,
+        sill: float,
+        kind: WindowKind,
+        mullions: int,
+        role: str,
+        size_class: WindowStyle | None = None,
+    ) -> float:
+        """A window of `width` centred exactly on a bay axis of the segment's facade (V5): an
+        axis another storey already glazes first, then the one nearest the segment's middle;
+        0 when no free axis takes it."""
+        wall = _wall_on(ctx, level, seg)
+        line = line_of(wall)
+        width = rnd(width)
+        if line is None or height <= 0 or sill + height > wall_h + 1e-6:
+            return 0.0
+        lo, hi = sorted((seg.a0, seg.a1))
+        same_line = [
+            w
+            for w in windows
+            if w.wall.kind == WallKind.EXTERIOR
+            and w.wall.horizontal == wall.horizontal
+            and abs(w.wall.coord - wall.coord) < 1e-6
+        ]
+        here = [_plan_center(w) for w in same_line if w.wall.level == level]
+        used = [_plan_center(w) for w in same_line if w.wall.level != level]
+        half = width / 2 + cfg.window_margin
+        # Stacking first: where a window of another storey already stands in this segment off
+        # the bay axes, this storey follows it (the V3/V4 axis rule) instead of a new axis.
+        if any(
+            lo + half - 1e-6 <= c <= hi - half + 1e-6
+            and not any(abs(c - a) < 0.05 for a in line.axes)
+            for c in used
+        ):
+            return 0.0
+        free = [
+            a
+            for a in line.axes
+            if lo + half - 1e-6 <= a <= hi - half + 1e-6
+            and not any(abs(a - c) < 0.05 for c in here)
+        ]
+        free.sort(
+            key=lambda a: (not any(abs(a - c) < 0.05 for c in used), abs(a - (lo + hi) / 2), a)
+        )
+        for axis in free:
+            offset = wall.place(seg, width, margin=cfg.window_margin, center=axis)
+            if offset is None:
+                continue
+            if abs(wall.param(axis) - (offset + width / 2)) > 1e-3:  # not on the axis
+                wall.occupied.pop()
+                continue
+            windows.append(
+                _Window(key, wall, offset, width, height, sill, kind, mullions, role, size_class)
+            )
+            return width * height
+        return 0.0
+
+    def ordered_segments(
+        region: Region, segments: list[tuple[str, Segment]]
+    ) -> list[tuple[str, Segment]]:
+        primary = "S" if region.rects[0].y0 < 1e-6 else "N"
+        # Preferred (emphasised) facades first; without intent this is the old order.
+        return sorted(
+            segments,
+            key=lambda s: (
+                s[0] not in preferred_sides,
+                s[0] != primary,
+                -s[1].length,
+                s[0],
+                s[1].a0,
+            ),
+        )
+
+    def needed_glazing(region: Region, ordered: list[tuple[str, Segment]]) -> float:
+        first = cfg.window_presets[side_style[ordered[0][0]]]
+        ratio = max(first.glazing_ratio, min_ratio)
+        return ratio * region.area - glazing_of(region)
+
+    def bay_widths(level: LevelRegions) -> dict[tuple[bool, float, str], float]:
+        """One window width per facade line and storey (V5): the widest a habitable room on
+        it needs to meet its glazing on the bay axes of its main facade, rounded up to 5 cm,
+        within the rules' minimum width and `bay_window_share` of a bay."""
+        need: dict[tuple[bool, float, str], float] = {}
+        share: dict[tuple[bool, float, str], float] = {}
+        for region in level.regions:
+            if region.kind != "room" or region.room_type not in HABITABLE:
+                continue
+            segments = _facade_segments(ctx, region)
+            if not segments:
+                continue
+            ordered = ordered_segments(region, segments)
+            side, seg = ordered[0]
+            wall = _wall_on(ctx, level.index, seg)
+            line = line_of(wall)
+            if line is None:
+                continue
+            _, height = dims(level.index, side_style[side])
+            lo, hi = sorted((seg.a0, seg.a1))
+            half = min_w / 2 + cfg.window_margin
+            k = sum(1 for a in line.axes if lo + half - 1e-6 <= a <= hi - half + 1e-6)
+            if k == 0 or height <= 0:
+                continue
+            key = (wall.horizontal, rnd(wall.coord), side)
+            per = max(needed_glazing(region, ordered), 0.0) / height / k
+            need[key] = max(need.get(key, 0.0), per)
+            share[key] = cfg.bay_window_share * line.width
+        return {
+            key: rnd(min(max(math.ceil(v / 0.05 - 1e-9) * 0.05, min_w), share[key]))
+            for key, v in need.items()
+        }
+
+    excluded_sides = {PLAN_SIDE[f] for f in intent.excluded_facades} if intent else set()
+    quiet_sides = DesignPriority.PRIVACY in ctx.spec.design.priorities
+
+    def side_rhythm(region: Region, ordered: list[tuple[str, Segment]], n: int) -> int:
+        """V5 side facades: a habitable room takes a window on every free bay axis of its
+        side facades (not its main facade), one width per side line and storey
+        (`bay_side_window_share` of a bay, at least the rules' minimum width). Never on a
+        facade the spec's window intent excludes; the caller skips it when privacy is a
+        design priority. Extra glazing only (the required glazing is placed before)."""
+        main = ordered[0][0]
+        for side, seg in ordered[1:]:
+            if side == main or side in excluded_sides:
+                continue
+            wall = _wall_on(ctx, region.level, seg)
+            line = line_of(wall)
+            if line is None:
+                continue
+            width = rnd(
+                max(min_w, math.floor(cfg.bay_side_window_share * line.width / 0.05 + 1e-9) * 0.05)
+            )
+            style = side_style[side]
+            preset = cfg.window_presets[style]
+            sill, height = dims(region.level, style)
+            mullions = min(12, max(0, math.ceil(width / preset.mullion_spacing) - 1))
+            while n < cfg.bay_windows_per_room + 2:
+                got = on_bay(
+                    f"window:{region.key}:{side}:{n}",
+                    region.level,
+                    seg,
+                    width,
+                    height,
+                    sill,
+                    WindowKind.CASEMENT,
+                    mullions,
+                    WINDOW_STYLE_ROLE[style],
+                    style,
+                )
+                if got <= 0:
+                    break
+                n += 1
+        return n
+
+    # V4 facade grid: the top storey first, so the larger rooms below take its window axes.
+    order = (
+        sorted(ctx.plan.levels, key=lambda lvl: -lvl.index)
+        if cfg.facade_grid_snap > 0
+        else ctx.plan.levels
+    )
+    for level in order:
         lv = level.index
+        widths = bay_widths(level) if grid else {}
         for region in level.regions:
             segments = _facade_segments(ctx, region)
             if not segments:
@@ -726,22 +1070,54 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
             rtype = region.room_type
             n = 0
             if region.kind == "room" and rtype in HABITABLE:
-                sill, height = dims(lv)
-                kind = (
-                    WindowKind.PANORAMIC
-                    if style == WindowStyle.PANORAMIC and lv == 0
-                    else WindowKind.CASEMENT
-                )
-                needed = ratio * region.area - glazing_of(region)
-                primary = "S" if region.rects[0].y0 < 1e-6 else "N"
-                ordered = sorted(
-                    segments, key=lambda s: (s[0] != primary, -s[1].length, s[0], s[1].a0)
-                )
+                ordered = ordered_segments(region, segments)
+                needed = needed_glazing(region, ordered)
+                # V5: the required glazing on bay axes first, one width per facade and storey.
+                for side, seg in ordered if grid else []:
+                    wall = _wall_on(ctx, lv, seg)
+                    width = widths.get((wall.horizontal, rnd(wall.coord), side))
+                    if width is None:
+                        continue
+                    style = side_style[side]
+                    preset = cfg.window_presets[style]
+                    sill, height = dims(lv, style)
+                    kind = (
+                        WindowKind.PANORAMIC
+                        if style == WindowStyle.PANORAMIC and lv == 0
+                        else WindowKind.CASEMENT
+                    )
+                    mullions = min(12, max(0, math.ceil(width / preset.mullion_spacing) - 1))
+                    while needed > 1e-6 and n < cfg.bay_windows_per_room:
+                        got = on_bay(
+                            f"window:{region.key}:{side}:{n}",
+                            lv,
+                            seg,
+                            width,
+                            height,
+                            sill,
+                            kind,
+                            mullions,
+                            WINDOW_STYLE_ROLE[style],
+                            style,
+                        )
+                        if got <= 0:
+                            break
+                        needed -= got
+                        n += 1
+                limit = max(3, n + 1) if grid else 3
                 for side, seg in ordered:
-                    if needed <= 1e-6 or n >= 3:
+                    if needed <= 1e-6 or n >= limit:
                         break
+                    style = side_style[side]
+                    preset = cfg.window_presets[style]
+                    sill, height = dims(lv, style)
+                    kind = (
+                        WindowKind.PANORAMIC
+                        if style == WindowStyle.PANORAMIC and lv == 0
+                        else WindowKind.CASEMENT
+                    )
                     available = seg.length - 2 * cfg.window_margin
-                    width = min(max(needed / height, min_w), available, 4.8)
+                    width = min(max(needed / height, min_w), available, 4.8) if height > 0 else 0
                     if width < min_w - 1e-6:
                         continue
                     width = math.floor(width / 0.05 + 1e-9) * 0.05
@@ -757,14 +1133,34 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
                         kind,
                         mullions,
                         WINDOW_STYLE_ROLE[style],
+                        style,
                     )
                     if got > 0:
                         needed -= got
                         n += 1
+                if cfg.facade_grid_snap > 0:
+                    n = _rhythm_windows(ctx, region, segments, windows, side_style, dims, n)
+                if grid and cfg.bay_side_rhythm and not quiet_sides:
+                    n = side_rhythm(region, ordered, n)
             elif region.kind == "room" and rtype in SERVICE_WINDOWS:
                 w, h, sill = cfg.service_window
                 side, seg = max(segments, key=lambda s: (s[1].length, s[0]))
-                if seg.length - 2 * cfg.window_margin >= w:
+                # V5: on a bay axis of its facade when one takes it.
+                on_axis = bool(grid) and (
+                    on_bay(
+                        f"window:{region.key}:{side}:0",
+                        lv,
+                        seg,
+                        w,
+                        h,
+                        sill,
+                        WindowKind.CASEMENT,
+                        0,
+                        "window.service",
+                    )
+                    > 0
+                )
+                if not on_axis and seg.length - 2 * cfg.window_margin >= w:
                     add(
                         f"window:{region.key}:{side}:0",
                         lv,
@@ -785,7 +1181,25 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
                     if rtype == RoomType.CORRIDOR and side in "SN":
                         continue
                     width = min(1.0, seg.length - 2 * cfg.window_margin)
-                    if width >= min_w - 1e-6:
+                    if (
+                        width >= min_w - 1e-6
+                        and grid
+                        and (cfg.bay_circulation_windows or cfg.window_consistency)
+                        and on_bay(
+                            f"window:{region.key}:{side}:{n}",
+                            lv,
+                            seg,
+                            width,
+                            height,
+                            sill,
+                            WindowKind.FIXED,
+                            0,
+                            "window.stair",
+                        )
+                        > 0
+                    ):
+                        n += 1
+                    elif width >= min_w - 1e-6:
                         add(
                             f"window:{region.key}:{side}:{n}",
                             lv,
@@ -799,6 +1213,15 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
                             "window.stair",
                         )
                         n += 1
+    if grid and cfg.window_consistency:
+        _merge_pairs(ctx, windows, grid, needed_glazing, ordered_segments)
+        _unify_widths(ctx, windows, _Glazing(ctx, windows, needed_glazing, ordered_segments))
+        if cfg.window_quick_wins:
+            book = _Glazing(ctx, windows, needed_glazing, ordered_segments)
+            _service_main_width(ctx, windows, book)
+            _separate_rooms(ctx, windows, grid, book)
+            _stack_circulation(ctx, windows, book)
+        _align_heads(ctx, windows)
     # Garage side window.
     if ctx.plan.garage is not None:
         g = ctx.plan.garage
@@ -824,6 +1247,527 @@ def _windows(ctx: _Context, doors: list[_Door], windows: list[_Window]) -> None:
             )
 
 
+def _bay_grid(ctx: _Context) -> dict[tuple[bool, float], Bays]:
+    """Bay grid of every facade line of the house (V5): its exterior walls on all storeys."""
+    if not ctx.config.facade_bays:
+        return {}
+    return facade_lines(
+        (
+            (
+                w.horizontal,
+                w.coord,
+                w.start[0] if w.horizontal else w.start[1],
+                w.end[0] if w.horizontal else w.end[1],
+            )
+            for w in ctx.walls
+            if w.key.startswith("wall:ext:")
+        ),
+        ctx.config,
+    )
+
+
+def _rhythm_windows(
+    ctx: _Context,
+    region: Region,
+    segments: list[tuple[str, Segment]],
+    windows: list[_Window],
+    side_style: Mapping[str, WindowStyle],
+    dims: Callable[[int, WindowStyle], tuple[float, float]],
+    n: int,
+) -> int:
+    """Facade grid (V4): a habitable room also takes a window on every window axis of the
+    storeys above that falls on its facade and has no opening of this storey yet, when one of
+    the axis window's width fits there exactly (clear of doors, other windows and junctions).
+    Windows then stack in columns and repeat in the rhythm the upper rooms set. Extra glazing
+    only: the room's required glazing is placed before. Returns the next window number."""
+    cfg, lv = ctx.config, region.level
+    min_w = ctx.profile.windows.min_width_m
+    for side, seg in segments:
+        wall = _wall_on(ctx, lv, seg)
+        if wall.kind != WallKind.EXTERIOR:
+            continue
+        lo, hi = sorted((seg.a0, seg.a1))
+        on_line = [
+            w
+            for w in windows
+            if w.wall.kind == WallKind.EXTERIOR
+            and w.wall.horizontal == wall.horizontal
+            and abs(w.wall.coord - wall.coord) < 1e-6
+        ]
+        here = [_plan_center(w) for w in on_line if w.wall.level == lv]
+        axes = sorted({(rnd(_plan_center(w)), rnd(w.width)) for w in on_line if w.wall.level > lv})
+        for axis, width in axes:
+            if not lo < axis < hi or any(abs(c - axis) < 0.05 for c in here):
+                continue
+            style = side_style[side]
+            sill, height = dims(lv, style)
+            if height <= 0 or width < min_w - 1e-6:
+                continue
+            # V5: with the bay grid, the widest window that fits exactly on the axis (down to
+            # the rules' minimum width) when the upper one's width does not.
+            room = 2 * min(axis - lo - cfg.window_margin, hi - cfg.window_margin - axis)
+            fit = rnd(math.floor(room / 0.05 + 1e-9) * 0.05)
+            if cfg.facade_bays and min_w - 1e-6 <= fit < width:
+                width = fit
+            offset = wall.place(seg, width, margin=cfg.window_margin, center=axis)
+            if offset is None:
+                continue
+            got = offset + width / 2
+            if abs(wall.param(axis) - got) > 1e-3:  # not on the axis: give the space back
+                wall.occupied.pop()
+                continue
+            preset = cfg.window_presets[style]
+            windows.append(
+                _Window(
+                    f"window:{region.key}:{side}:{n}",
+                    wall,
+                    offset,
+                    width,
+                    height,
+                    sill,
+                    WindowKind.CASEMENT,
+                    min(12, max(0, math.ceil(width / preset.mullion_spacing) - 1)),
+                    WINDOW_STYLE_ROLE[style],
+                    style,
+                )
+            )
+            here.append(axis)
+            n += 1
+    return n
+
+
+def _room_of(w: _Window) -> str:
+    """The region key a window was placed for (keys are window:<region>:<side>:<n>)."""
+    return w.key.split(":")[1]
+
+
+def _free_span(wall: WallPlan, offset: float, width: float) -> None:
+    """Give an opening's span back to its wall. WallPlan.place records (start, start + width)
+    unrounded, so the span is matched within 1 mm (an exact tuple match can miss and leave the
+    space blocked)."""
+    for i, (a, b) in enumerate(wall.occupied):
+        if abs(a - offset) < 1e-3 and abs(b - (offset + width)) < 1e-3:
+            del wall.occupied[i]
+            return
+
+
+class _Glazing:
+    """Bookkeeping for the V6 window passes: a room's glazing and its requirement, and taking a
+    window out of / back into its wall (occupied spans matched within 1 mm)."""
+
+    def __init__(
+        self,
+        ctx: _Context,
+        windows: list[_Window],
+        needed_glazing: Callable[[Region, list[tuple[str, Segment]]], float],
+        ordered_segments: Callable[[Region, list[tuple[str, Segment]]], list[tuple[str, Segment]]],
+    ) -> None:
+        self.ctx = ctx
+        self.windows = windows
+        self.needed = needed_glazing
+        self.ordered = ordered_segments
+        self.regions = {(lvl.index, r.key): r for lvl in ctx.plan.levels for r in lvl.regions}
+
+    def glazing(self, level: int, room: str) -> float:
+        return sum(
+            w.width * w.height
+            for w in self.windows
+            if w.wall.level == level and _room_of(w) == room
+        )
+
+    def required(self, level: int, room: str) -> float:
+        region = self.regions.get((level, room))
+        if region is None:
+            return math.inf
+        segments = _facade_segments(self.ctx, region)
+        return self.needed(region, self.ordered(region, segments)) if segments else 0.0
+
+    def release(self, w: _Window) -> None:
+        self.windows.remove(w)
+        _free_span(w.wall, w.offset, w.width)
+
+    def restore(self, w: _Window) -> None:
+        self.windows.append(w)
+        w.wall.occupied.append((w.offset, w.offset + w.width))
+
+
+def _merge_pairs(
+    ctx: _Context,
+    windows: list[_Window],
+    grid: Mapping[tuple[bool, float], Bays],
+    needed_glazing: Callable[[Region, list[tuple[str, Segment]]], float],
+    ordered_segments: Callable[[Region, list[tuple[str, Segment]]], list[tuple[str, Segment]]],
+) -> None:
+    """V6: no awkward pairs. Windows of one habitable room on one facade line and storey whose
+    centres share a bay become one window on that bay's axis, as wide as the widest of them
+    (wider, up to their total, if the room's glazing needs it); if that does not fit, the
+    smaller ones are dropped when the room keeps its required glazing; otherwise they stay.
+    Placement keeps the usual gap between openings (WallPlan.place), never less than the
+    profile's openings.min_clearance_m."""
+    cfg = ctx.config
+    book = _Glazing(ctx, windows, needed_glazing, ordered_segments)
+    glazing, required, release, restore = book.glazing, book.required, book.release, book.restore
+
+    # Groups: same wall, storey and room, habitable windows only (stair and service windows
+    # keep their own rules). Sorted for determinism.
+    groups: dict[tuple[str, str], list[_Window]] = {}
+    for w in windows:
+        if w.role in ("window.stair", "window.service") or w.wall.kind != WallKind.EXTERIOR:
+            continue
+        groups.setdefault((w.wall.key, _room_of(w)), []).append(w)
+    for (_, room), ws in sorted(groups.items()):
+        line = grid.get((ws[0].wall.horizontal, rnd(ws[0].wall.coord)))
+        if line is None or len(ws) < 2:
+            continue
+        ws.sort(key=lambda w: _plan_center(w))
+        clusters: list[list[_Window]] = [[ws[0]]]
+        for w in ws[1:]:
+            if _plan_center(w) - _plan_center(clusters[-1][-1]) < line.width / 2:
+                clusters[-1].append(w)
+            else:
+                clusters.append([w])
+        for cluster in clusters:
+            if len(cluster) < 2:
+                continue
+            wall, level = cluster[0].wall, cluster[0].wall.level
+            need = required(level, room)
+            mid = sum(_plan_center(w) for w in cluster) / len(cluster)
+            axis = min(line.axes, key=lambda a: (abs(a - mid), a))
+            big = max(cluster, key=lambda w: (w.width * w.height, w.key))
+            for w in cluster:
+                release(w)
+            base = glazing(level, room)
+            placed = False
+            total = rnd(sum(w.width for w in cluster))
+            for width in sorted({rnd(big.width), total}):
+                if base + width * big.height < need - 1e-6:
+                    continue
+                seg = Segment(
+                    "h" if wall.horizontal else "v",
+                    wall.coord,
+                    *sorted(
+                        (wall.start[0], wall.end[0])
+                        if wall.horizontal
+                        else (wall.start[1], wall.end[1])
+                    ),
+                )
+                offset = wall.place(seg, width, margin=cfg.window_margin, center=axis)
+                if offset is None:
+                    continue
+                if abs(wall.param(axis) - (offset + width / 2)) > 1e-3:
+                    wall.occupied.pop()
+                    continue
+                windows.append(
+                    _Window(
+                        big.key,
+                        wall,
+                        offset,
+                        width,
+                        big.height,
+                        big.sill,
+                        big.kind,
+                        big.mullions if width == big.width else _mullions(cfg, big, width),
+                        big.role,
+                        big.size_class,
+                    )
+                )
+                placed = True
+                break
+            if placed:
+                continue
+            restore(big)  # no merge on the axis: keep the largest, drop the rest if glazing allows
+            if base + big.width * big.height >= need - 1e-6:
+                continue
+            # Last resort: one window over the pair's own span (both widths and the gap
+            # between them: always free, more glass than the two) instead of a pair.
+            release(big)
+            start = min(w.offset for w in cluster)
+            width = rnd(max(w.offset + w.width for w in cluster) - start)
+            windows.append(
+                _Window(
+                    big.key,
+                    wall,
+                    start,
+                    width,
+                    big.height,
+                    big.sill,
+                    big.kind,
+                    _mullions(cfg, big, width),
+                    big.role,
+                    big.size_class,
+                )
+            )
+            wall.occupied.append((start, start + width))
+
+
+def _unify_widths(ctx: _Context, windows: list[_Window], book: _Glazing) -> None:
+    """V6: one main width per facade wall and storey. The habitable windows' most common width
+    there (the wider on a tie; every width comes from LayoutConfig: the bay width of the
+    facade, the side rhythm width or a preset-sized window) becomes the main width; every
+    other habitable window takes it, centred where it stands, when it fits exactly there and
+    the room keeps its required glazing; otherwise it keeps its size. Service windows already
+    share LayoutConfig.service_window; stair windows keep their own size."""
+    cfg = ctx.config
+    walls: dict[str, list[_Window]] = {}
+    for w in windows:
+        if w.role in ("window.stair", "window.service") or w.wall.kind != WallKind.EXTERIOR:
+            continue
+        walls.setdefault(w.wall.key, []).append(w)
+    for _, ws in sorted(walls.items()):
+        counts: dict[float, int] = {}
+        for w in ws:
+            counts[rnd(w.width)] = counts.get(rnd(w.width), 0) + 1
+        main = max(counts, key=lambda v: (counts[v], v))
+        for w in sorted(ws, key=lambda w: w.key):
+            if abs(w.width - main) < 1e-6:
+                continue
+            wall, room, level = w.wall, _room_of(w), w.wall.level
+            centre = _plan_center(w)
+            book.release(w)
+            if book.glazing(level, room) + main * w.height < book.required(level, room) - 1e-6:
+                book.restore(w)
+                continue
+            lo, hi = sorted(
+                (wall.start[0], wall.end[0]) if wall.horizontal else (wall.start[1], wall.end[1])
+            )
+            seg = Segment("h" if wall.horizontal else "v", wall.coord, lo, hi)
+            offset = wall.place(seg, main, margin=cfg.window_margin, center=centre)
+            if offset is None:
+                book.restore(w)
+                continue
+            if abs(wall.param(centre) - (offset + main / 2)) > 1e-3:
+                _free_span(wall, offset, main)
+                book.restore(w)
+                continue
+            windows.append(
+                _Window(
+                    w.key,
+                    wall,
+                    offset,
+                    main,
+                    w.height,
+                    w.sill,
+                    w.kind,
+                    _mullions(cfg, w, main),
+                    w.role,
+                    w.size_class,
+                )
+            )
+
+
+def _room_segments(ctx: _Context, book: _Glazing, w: _Window) -> list[Segment]:
+    """The facade segments of the window's room on the window's own wall."""
+    region = book.regions.get((w.wall.level, _room_of(w)))
+    if region is None:
+        return []
+    return [seg for _, seg in _facade_segments(ctx, region) if w.wall.covers(seg)]
+
+
+def _relocate(ctx: _Context, book: _Glazing, w: _Window, width: float, centre: float) -> bool:
+    """Move/resize a window to `width` centred exactly on `centre` within its room's facade
+    segment on its wall (WallPlan.place: gaps to other openings and junctions kept); the
+    window is unchanged when it does not fit there."""
+    segs = [s for s in _room_segments(ctx, book, w) if min(s.a0, s.a1) < centre < max(s.a0, s.a1)]
+    if not segs:
+        return False
+    wall = w.wall
+    book.release(w)
+    offset = wall.place(segs[0], width, margin=ctx.config.window_margin, center=centre)
+    if offset is None or abs(wall.param(centre) - (offset + width / 2)) > 1e-3:
+        if offset is not None:
+            _free_span(wall, offset, width)
+        book.restore(w)
+        return False
+    book.windows.append(
+        _Window(
+            w.key,
+            wall,
+            offset,
+            rnd(width),
+            w.height,
+            w.sill,
+            w.kind,
+            _mullions(ctx.config, w, width),
+            w.role,
+            w.size_class,
+        )
+    )
+    return True
+
+
+def _main_widths(windows: list[_Window]) -> dict[str, float]:
+    """Main (most common, then wider) habitable window width per exterior wall."""
+    counts: dict[str, dict[float, int]] = {}
+    for w in windows:
+        if w.role in ("window.stair", "window.service") or w.wall.kind != WallKind.EXTERIOR:
+            continue
+        c = counts.setdefault(w.wall.key, {})
+        c[rnd(w.width)] = c.get(rnd(w.width), 0) + 1
+    return {k: max(c, key=lambda v: (c[v], v)) for k, c in counts.items()}
+
+
+def _service_main_width(ctx: _Context, windows: list[_Window], book: _Glazing) -> None:
+    """V7 1a: a bathroom/WC window takes its wall's main window width, centred where it stands,
+    keeping its height and (privacy) sill; it keeps its size where the wider one does not fit."""
+    mains = _main_widths(windows)
+    for w in sorted((w for w in windows if w.role == "window.service"), key=lambda w: w.key):
+        main = mains.get(w.wall.key)
+        if main is None or abs(main - w.width) < 1e-6 or w.wall.kind != WallKind.EXTERIOR:
+            continue
+        _relocate(ctx, book, w, main, _plan_center(w))
+
+
+def _separate_rooms(
+    ctx: _Context,
+    windows: list[_Window],
+    grid: Mapping[tuple[bool, float], Bays],
+    book: _Glazing,
+) -> None:
+    """V7 1b: windows of two rooms whose centres share a bay. One of them (the narrower first)
+    moves to a free bay axis of its own room's facade on that wall (never a window that stacks
+    with another storey's: the stack outranks the pair); failing that, it is dropped
+    only if its room keeps another window and its required glazing, or if it lights a stair
+    void (no glazing requirement; lit through the open stair); otherwise both stay."""
+    moved: set[str] = set()  # each window moves at most once: the loop always ends
+    changed = True
+    while changed:
+        changed = False
+        by_wall: dict[str, list[_Window]] = {}
+        for w in windows:
+            if w.wall.kind == WallKind.EXTERIOR:
+                by_wall.setdefault(w.wall.key, []).append(w)
+        for _, ws in sorted(by_wall.items()):
+            line = grid.get((ws[0].wall.horizontal, rnd(ws[0].wall.coord)))
+            if line is None:
+                continue
+            ws.sort(key=_plan_center)
+            for a, b in itertools.pairwise(ws):
+                if (
+                    _room_of(a) == _room_of(b)
+                    or _plan_center(b) - _plan_center(a) >= line.width / 2
+                ):
+                    continue
+                for w in sorted((a, b), key=lambda w: (w.width, w.key)):
+                    if w.key in moved or _stacked(windows, w):  # a stack outranks the pair
+                        continue
+                    taken = [_plan_center(o) for o in ws if o is not w]
+                    free = sorted(
+                        (
+                            ax
+                            for ax in line.axes
+                            if all(abs(ax - c) >= line.width / 2 for c in taken)
+                        ),
+                        key=lambda ax: (abs(ax - _plan_center(w)), ax),
+                    )
+                    if any(_relocate(ctx, book, w, w.width, ax) for ax in free):
+                        moved.add(w.key)
+                        changed = True
+                        break
+                    level, room = w.wall.level, _room_of(w)
+                    others = [
+                        o
+                        for o in windows
+                        if o is not w and o.wall.level == level and _room_of(o) == room
+                    ]
+                    region = book.regions.get((level, room))
+                    void = region is not None and region.kind == "void"
+                    if void or (
+                        others
+                        and book.glazing(level, room) - w.width * w.height
+                        >= book.required(level, room) - 1e-6
+                    ):
+                        book.release(w)
+                        changed = True
+                        break
+                if changed:
+                    break
+            if changed:
+                break
+
+
+def _stacked(windows: list[_Window], w: _Window) -> bool:
+    """A window of another storey stands on the same facade line at the same centre."""
+    c = _plan_center(w)
+    return any(
+        o.wall.level != w.wall.level
+        and o.wall.kind == WallKind.EXTERIOR
+        and o.wall.horizontal == w.wall.horizontal
+        and abs(o.wall.coord - w.wall.coord) < 1e-6
+        and abs(_plan_center(o) - c) < 0.05
+        for o in windows
+    )
+
+
+def _stack_circulation(ctx: _Context, windows: list[_Window], book: _Glazing) -> None:
+    """V7 1c: an upper stair/hall/corridor window that stands on no window below moves onto
+    the axis of a window of the storey below that falls inside its own room's facade segment,
+    when it fits exactly there."""
+    for w in sorted((w for w in windows if w.role == "window.stair"), key=lambda w: w.key):
+        if w.wall.level == 0 or w.wall.kind != WallKind.EXTERIOR:
+            continue
+        same_line = [
+            o
+            for o in windows
+            if o.wall.kind == WallKind.EXTERIOR
+            and o.wall.horizontal == w.wall.horizontal
+            and abs(o.wall.coord - w.wall.coord) < 1e-6
+        ]
+        below = sorted(
+            {rnd(_plan_center(o)) for o in same_line if o.wall.level == w.wall.level - 1}
+        )
+        if any(abs(c - _plan_center(w)) < 0.05 for c in below):
+            continue
+        for c in sorted(below, key=lambda c: (abs(c - _plan_center(w)), c)):
+            if _relocate(ctx, book, w, w.width, c):
+                break
+
+
+def _align_heads(ctx: _Context, windows: list[_Window]) -> None:
+    """V6: one head height per storey. The most common head (sill + height) of the storey's
+    habitable windows (the higher on a tie) becomes the head of its stair, hall, corridor and
+    service windows: their sill is raised by the difference, never lowered (a service sill
+    stays above LayoutConfig.service_window's, an upper-storey sill above the guard height),
+    and the head stays a lintel below the wall top."""
+    cfg = ctx.config
+    top = ctx.wall_height - cfg.lintel_min
+    for level in sorted({w.wall.level for w in windows}):
+        heads: dict[float, int] = {}
+        for w in windows:
+            if (
+                w.wall.level == level
+                and w.wall.kind == WallKind.EXTERIOR
+                and w.role not in ("window.stair", "window.service")
+            ):
+                h = rnd(w.sill + w.height)
+                heads[h] = heads.get(h, 0) + 1
+        if not heads:
+            continue
+        head = max(heads, key=lambda h: (heads[h], h))
+        if head > top + 1e-6:
+            continue
+        for w in windows:
+            if w.wall.level != level or w.role not in ("window.stair", "window.service"):
+                continue
+            sill = rnd(head - w.height)
+            if sill > w.sill + 1e-6:
+                w.sill = sill
+
+
+def _mullions(cfg: LayoutConfig, w: _Window, width: float) -> int:
+    preset = cfg.window_presets.get(w.size_class) if w.size_class is not None else None
+    if preset is None:
+        return w.mullions
+    return min(12, max(0, math.ceil(width / preset.mullion_spacing) - 1))
+
+
+def _plan_center(w: _Window) -> float:
+    """Plan coordinate (x for horizontal walls, y otherwise) of a window's centre."""
+    (sx, sy), (ex, ey) = w.wall.start, w.wall.end
+    s0, s1 = (sx, ex) if w.wall.horizontal else (sy, ey)
+    sign = 1.0 if s1 >= s0 else -1.0
+    return s0 + sign * (w.offset + w.width / 2)
+
+
 def _point_on(wall: WallPlan, t: float) -> Point:
     (sx, sy), (ex, ey) = wall.start, wall.end
     f = t / wall.length
@@ -844,9 +1788,12 @@ def build_model(
     previous_ids: Mapping[str, uuid.UUID] | None = None,
     furniture: bool = True,
     type_set: TypeSet | None = None,
+    design: DesignRecord | None = None,
 ) -> BuildingModel:
     ids = Ids(id_namespace, previous_ids)
-    ctx = _Context(plan, spec, profile, config, ids, seed)
+    ctx = _Context(plan, spec, profile, config, ids, seed, design=design)
+    finishes = finishes_of(ctx.system)
+    floor_finish = {"parquet": finishes.dry_floor, "tile": finishes.wet_floor}
     sk = plan.skeleton
     f2f = spec.targets.floor_to_floor_height_m
     levels = [
@@ -889,7 +1836,8 @@ def build_model(
                 raise BuildError(f"{region.name}: room region without a type")
             floor = FLOORS.get(region.room_type, "floor")
             if finish == FinishLevel.ECONOMY and floor == "parquet":
-                floor = "floor"
+                floor = "floor"  # explicit finish level first, then the design system
+            floor = floor_finish.get(floor, floor)
             adjacent = sorted(
                 other.key
                 for other in level.regions
@@ -968,6 +1916,7 @@ def build_model(
                     load_bearing=exterior,
                     finish_left_id=w.left,
                     finish_right_id=w.right,
+                    finish_right_color=w.right_color,
                 ),
             )
         )
@@ -1011,7 +1960,10 @@ def build_model(
                 semantic_key=win.key,
                 dimensions=WindowDimensions(width=win.width, height=win.height),
                 properties=WindowProperties(
-                    window_kind=win.kind, frame_material_id="window_frame", mullions=win.mullions
+                    window_kind=win.kind,
+                    frame_material_id="window_frame",
+                    mullions=win.mullions,
+                    size_class=win.size_class,
                 ),
             )
         )
@@ -1019,14 +1971,23 @@ def build_model(
     elements += _slabs(ctx, levels)
     elements += _stairs_and_railings(ctx, levels, room_elements)
     elements += _roofs(ctx, levels)
+    elements += _canopies(ctx, levels, doors, windows)
     if furniture:
-        elements += furnish(ctx.plan, room_elements, doors_to_spans(doors), levels, ids)
+        palette = furniture_substitution(ctx.system)
+        elements += [
+            f.model_copy(update={"material_id": palette[f.material_id]})
+            if f.material_id in palette
+            else f
+            for f in furnish(ctx.plan, room_elements, doors_to_spans(doors), levels, ids)
+        ]
 
     roles = {d.key: d.role for d in doors} | {w.key: w.role for w in windows}
     elements, types, assemblies = attach_types(elements, roles, type_set)
     generator = f"{config.engine_version} · rules {profile.ref}"
     if type_set is not None:
         generator += f" · types {type_set.source} {type_set.mapping}"
+    if ctx.system is not None:
+        generator += f" · design {ctx.system.id} ({ctx.system.source})"
 
     return BuildingModel(
         schema_version=SCHEMA_VERSION,
@@ -1045,6 +2006,7 @@ def build_model(
         metadata=ModelMetadata(source="layout", generator=generator),
         types=types,
         assemblies=assemblies,
+        design=design,
     )
 
 
@@ -1054,6 +2016,8 @@ def element_role(el: Element, recorded: Mapping[str, str]) -> str | None:
     if isinstance(el, Wall):
         return "wall.exterior" if el.properties.wall_kind == WallKind.EXTERIOR else "wall.interior"
     if isinstance(el, Slab):
+        if el.properties.slab_kind == SlabKind.CANOPY:
+            return None  # untyped, like rooms and furniture (no canopy role or type yet)
         if key == "slab:ground":
             return "slab.ground"
         if key == "slab:terrace":
@@ -1105,6 +2069,11 @@ def attach_types(
             )
         elif isinstance(el, Stair | Railing) and isinstance(p, StairTypeParams | RailingTypeParams):
             update["material_id"] = p.material_id
+            if isinstance(el, Railing) and isinstance(p, RailingTypeParams):
+                # The railing kind is a fixed type parameter (e.g. a glass stair balustrade).
+                update["properties"] = el.properties.model_copy(
+                    update={"railing_kind": p.railing_kind}
+                )
         out.append(el.model_copy(update=update))
     types = [used[k] for k in sorted(used)]
     assembly_ids = sorted({t.assembly_id for t in types if t.assembly_id is not None})
@@ -1169,6 +2138,101 @@ def _slab(
     )
 
 
+def _canopies(
+    ctx: _Context, levels: list[Level], doors: list[_Door], windows: list[_Window]
+) -> list[Element]:
+    """An entrance canopy (V3) over each entrance door: a thin slab cantilevered from the outer
+    face, `clearance` above the door head, reaching `side` beyond the jambs but stopping short
+    of any window whose head it would cut. Skipped where it does not fit under the next level
+    or would run into another wall (constraint slab.canopy validates the result)."""
+    cfg = ctx.config.entrance_canopy
+    if cfg is None:
+        return []
+    style = (
+        ctx.system.style_tags[0] if ctx.system is not None else ctx.spec.style.architectural_style
+    )
+    material = ctx.config.canopy_materials.get(style, "roof_trim")
+    out: list[Element] = []
+    for door in sorted(doors, key=lambda d: d.key):
+        if door.kind != DoorKind.ENTRANCE or door.wall.kind != WallKind.EXTERIOR:
+            continue
+        wall = door.wall
+        underside = door.height + cfg.clearance
+        top = underside + cfg.thickness
+        if top > ctx.wall_height + 1e-6:
+            continue
+        lo = max(0.0, door.offset - cfg.side)
+        hi = min(wall.length, door.offset + door.width + cfg.side)
+        for w in windows:
+            if w.wall is not wall or w.sill + w.height <= underside + 1e-6:
+                continue
+            if w.offset + w.width <= door.offset:  # window on the low side
+                lo = max(lo, w.offset + w.width + 0.05)
+            elif w.offset >= door.offset + door.width:  # on the high side
+                hi = min(hi, w.offset - 0.05)
+        outline = [
+            _outside(wall, lo, 0.0),
+            _outside(wall, hi, 0.0),
+            _outside(wall, hi, cfg.depth),
+            _outside(wall, lo, cfg.depth),
+        ]
+        nxt = outline[1:] + outline[:1]
+        signed = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(outline, nxt, strict=True))
+        if signed < 0:  # counter-clockwise, as every outline in the model
+            outline.reverse()
+        poly = ShapelyPolygon(outline)
+        clash = any(
+            other.level == wall.level
+            and other is not wall
+            and poly.intersection(ShapelyPolygon(_wall_body(other))).area > 1e-4
+            for other in ctx.walls
+        )
+        if clash:
+            continue
+        key = "slab:canopy" if not out else f"slab:canopy:{len(out) + 1}"
+        slab = _slab(
+            ctx,
+            key,
+            "Entrance canopy",
+            levels[wall.level].id,
+            outline,
+            [],
+            cfg.thickness,
+            SlabKind.CANOPY,
+        )
+        out.append(
+            slab.model_copy(
+                update={
+                    "layer": Layer.ARCHITECTURE,
+                    "material_id": material,
+                    "position": slab.position.model_copy(update={"z": rnd(top)}),
+                }
+            )
+        )
+    return out
+
+
+def _outside(wall: WallPlan, t: float, d: float) -> Point:
+    """Point `t` along a wall's axis, `d` out from its outer (right, -v) face."""
+    (sx, sy), (ex, ey) = wall.start, wall.end
+    ux, uy = (ex - sx) / wall.length, (ey - sy) / wall.length
+    off = wall.thickness / 2 + d  # right face (-v) = exterior of counter-clockwise walls
+    return (rnd(sx + ux * t + uy * off), rnd(sy + uy * t - ux * off))
+
+
+def _wall_body(wall: WallPlan) -> list[Point]:
+    """Plan rectangle of a (centre-aligned) wall body."""
+    (sx, sy), (ex, ey) = wall.start, wall.end
+    ux, uy = (ex - sx) / wall.length, (ey - sy) / wall.length
+    h = wall.thickness / 2
+    return [
+        (sx - uy * h, sy + ux * h),
+        (ex - uy * h, ey + ux * h),
+        (ex + uy * h, ey - ux * h),
+        (sx + uy * h, sy - ux * h),
+    ]
+
+
 def _wall_thickness_at(ctx: _Context, level: int, x: float, y0: float, y1: float) -> float:
     """Thickness of the wall along x = const covering [y0, y1] (0 if none)."""
     for w in ctx.walls:
@@ -1185,6 +2249,11 @@ def _slabs(ctx: _Context, levels: list[Level]) -> list[Element]:
     house = Rect(-half, -half, rnd(sk.W + half), rnd(sk.D + half))
     out: list[Element] = []
     ground = [house]
+    if sk.has_wing:
+        x0, x1 = sk.wing_x
+        ground.append(
+            Rect(rnd(x0 - half), rnd(sk.D - half), rnd(x1 + half), rnd(sk.depth_total + half))
+        )
     if ctx.plan.garage is not None:
         g = ctx.plan.garage
         ground.append(Rect(rnd(g.x0 - half), -half, rnd(g.x1 + half), rnd(g.y1 + half)))
@@ -1399,6 +2468,16 @@ def _roofs(ctx: _Context, levels: list[Level]) -> list[Element]:
             (sk.W + half, sk.D + half),
             (-half, sk.D + half),
         ]
+        if sk.has_wing:  # one flat roof over the whole L or T (outer wall faces)
+            x0, x1 = sk.wing_x
+            outline = _union_outline(
+                [
+                    Rect(-half, -half, rnd(sk.W + half), rnd(sk.D + half)),
+                    Rect(
+                        rnd(x0 - half), rnd(sk.D - half), rnd(x1 + half), rnd(sk.depth_total + half)
+                    ),
+                ]
+            )
         out.append(
             _roof(
                 ctx,
@@ -1435,6 +2514,27 @@ def _roofs(ctx: _Context, levels: list[Level]) -> list[Element]:
                 0.0,
             )
         )
+        if sk.has_wing:
+            # The wing's own roof over its walls; on the main bar's side it overhangs by the
+            # same amount, under the main roof's garden eave (no valley geometry in v1).
+            x0, x1 = sk.wing_x
+            wy0, wy1 = rnd(sk.D - over), rnd(sk.depth_total + e)
+            wing = [(x0 - e, wy0), (x1 + e, wy0), (x1 + e, wy1), (x0 - e, wy1)]
+            out.append(
+                _roof(
+                    ctx,
+                    "roof:wing",
+                    "Wing roof",
+                    top,
+                    wing,
+                    eave_z,
+                    roof_spec.type,
+                    pitch,
+                    over,
+                    "y" if wy1 - wy0 >= x1 - x0 + 2 * e else "x",
+                    0.0,
+                )
+            )
     if ctx.plan.garage is not None:
         g = ctx.plan.garage
         x0, x1 = (g.x0 - half, -half) if sk.garage_side == "west" else (sk.W + half, g.x1 + half)
@@ -1479,7 +2579,7 @@ def _roof(
         level_id=level,
         position=Vec3(x=ox, y=oy, z=z),
         rotation=Rotation(),
-        material_id="roof",
+        material_id=ctx.config.roof_materials[roof_type],
         relationships=[],
         origin=Origin.GENERATED,
         semantic_key=key,

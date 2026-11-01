@@ -92,6 +92,14 @@ async def test_demo_prompt_generates_a_version(client: Any) -> None:
     assert version["seed"] == 0 and version["engine_version"] == ENGINE_VERSION
     assert version["report"]["generation"]["generation_id"] == gen["id"]
     assert version["report"]["generation"]["provider"] == "mock"
+    # Design Intelligence V1: the evaluation of the chosen candidate and the layout patterns
+    # that steered it are stored with the version, patterns with their (draft) status.
+    report = version["report"]
+    assert report["evaluation"]["requirements"] and report["evaluation"]["criteria"]
+    assert 0 <= report["evaluation"]["score"] <= 1
+    assert report["patterns"] and all(p["status"] == "draft" for p in report["patterns"])
+    assert sum(c["chosen"] for c in report["candidates"]) == 1
+    assert report["metrics"]["design_score"] == report["evaluation"]["score"]
     assert version["label"].startswith("AI · ")
     assert len(version["model"]["elements"]) > 100
     project = (await client.get(f"/api/v1/projects/{pid}", headers=h)).json()

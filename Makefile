@@ -1,5 +1,5 @@
 # Thin wrapper over the root package.json scripts (the primary, cross-platform entry point).
-.PHONY: install dev db-local migrate lint typecheck test check build knowledge-lock docker-up docker-down
+.PHONY: install dev db-local migrate lint typecheck test check build knowledge-lock benchmark docker-up docker-down
 
 install:
 	pnpm install && pnpm api:install
@@ -21,6 +21,8 @@ build:
 	pnpm build:web
 knowledge-lock:
 	pnpm knowledge:lock
+benchmark:
+	pnpm benchmark
 docker-up:
 	pnpm docker:up
 docker-down:

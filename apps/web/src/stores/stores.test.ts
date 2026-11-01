@@ -40,6 +40,27 @@ describe("viewer store (floor navigation)", () => {
   });
 });
 
+describe("viewer store (render options)", () => {
+  it("has effects on and the grid off by default, and keeps them across model loads", () => {
+    useViewerStore.setState({ effects: true, showGrid: false });
+    const { setEffects, setShowGrid, reset } = useViewerStore.getState();
+    setEffects(false);
+    setShowGrid(true);
+    reset();
+    expect(useViewerStore.getState().effects).toBe(false);
+    expect(useViewerStore.getState().showGrid).toBe(true);
+    useViewerStore.setState({ effects: true, showGrid: false });
+  });
+
+  it("shows the site by default and keeps the Site toggle across model loads (V2)", () => {
+    expect(useViewerStore.getState().showSite).toBe(true);
+    useViewerStore.getState().setShowSite(false);
+    useViewerStore.getState().reset();
+    expect(useViewerStore.getState().showSite).toBe(false);
+    useViewerStore.setState({ showSite: true });
+  });
+});
+
 describe("layer store", () => {
   it("toggles layers independently", () => {
     useLayerStore.getState().toggle("furniture");

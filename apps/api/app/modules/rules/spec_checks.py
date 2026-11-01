@@ -6,6 +6,8 @@ areas and the requested floor area. Errors block generation; warnings are shown 
 Feasibility of an actual plan (tier 3) is decided by the layout engine.
 """
 
+from app.modules.building.design import check_intent
+from app.modules.building.intent import check_requirements
 from app.modules.building.issues import Issue, Severity, pointer
 from app.modules.building.specification import (
     BuildingSpecification,
@@ -86,6 +88,16 @@ class _Checks:
                     f"{room.key}: target area {room.target_area_m2} m² is below the "
                     f"{rule.min_area_m2} m² minimum for a {room.type}",
                     suggestion=f"Use at least {rule.min_area_m2} m².",
+                    rule=f"{ref}.min_area_m2",
+                )
+            if room.max_area_m2 is not None and room.max_area_m2 < rule.min_area_m2:
+                self.add(
+                    "error",
+                    "SPEC_AREA_BELOW_MINIMUM",
+                    pointer("rooms", i, "max_area_m2"),
+                    f"{room.key}: maximum area {room.max_area_m2} m² is below the "
+                    f"{rule.min_area_m2} m² minimum for a {room.type}",
+                    suggestion=f"Allow at least {rule.min_area_m2} m².",
                     rule=f"{ref}.min_area_m2",
                 )
             if (
@@ -277,4 +289,7 @@ def check_spec(
     checks.features()
     gfa = spec.targets.gross_floor_area_m2
     checks.site(gfa / spec.targets.storeys if gfa is not None else None)
-    return checks.issues
+    # Design intent that is invalid on its own (K3). The selected design system is checked
+    # against the catalog by the caller (building.design.check_design; rules has no catalog).
+    # Requirement traces, separation requests and area ranges (spec 1.2.0).
+    return checks.issues + check_intent(spec) + check_requirements(spec)

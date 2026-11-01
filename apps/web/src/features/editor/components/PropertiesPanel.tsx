@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 
 import type { ModelIndex } from "@/engine/model/model-index";
+import { ElementEditSection } from "@/features/editing/components/ElementEditSection";
 import { useSelectionStore } from "@/stores/selection-store";
 
 import { describeElement } from "../describe-element";
@@ -47,6 +48,7 @@ export function PropertiesPanel({ index }: { index: ModelIndex }) {
           ×
         </button>
       </header>
+      {element && <ElementEditSection element={element} index={index} />}
       {description.sections.map((section) => (
         <section
           key={section.title}

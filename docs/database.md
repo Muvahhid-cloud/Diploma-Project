@@ -88,7 +88,7 @@ materials (library, seeded)
 No `updated_at` — immutable. `spec`/`model` are large; list queries defer them and return `summary` only. The full-version endpoint recomputes the summary from the model (derived data) and evaluates rules findings on read.
 
 ### drafts
-Per (project, user) uncommitted working state.
+Per (project, user) uncommitted working state. Not implemented: since Phase 3.6 D2 the plan-editing session (base version + operation list) lives in the client and is replayed by `/edits/preview`; saved edits become `project_versions` rows with `source = manual` and their `operations`.
 | id | project_id | user_id | base_version_id | model jsonb | spec jsonb | operations jsonb (+ inverse stack) | updated_at | unique(project_id, user_id) |
 
 ### jobs (implemented, `0002`)

@@ -24,6 +24,7 @@ from app.modules.building.issues import Issue, errors, pointer
 from app.modules.catalog.components import ComponentsDocument
 from app.modules.catalog.integrity import check_registry
 from app.modules.catalog.lock import PACKS_DIR, REGIONS_DIR, SOURCES_DIR, verify_lock
+from app.modules.catalog.patterns_schema import PatternsDocument
 from app.modules.catalog.provenance import Source
 from app.modules.catalog.registry import KnowledgeRegistry, LoadedPack
 from app.modules.catalog.schemas import (
@@ -111,7 +112,7 @@ def _load_pack(knowledge_dir: Path, pack_dir: Path, issues: list[Issue]) -> Load
     for name in c.drawing_profiles:
         dp = _parse(DrawingProfilesDocument, pack_dir / name, f"{rel_dir}/{name}", issues)
         profiles += dp.profiles if dp else []
-    families, types, assemblies, mappings = [], [], [], []
+    families, types, assemblies, mappings, designs = [], [], [], [], []
     for name in c.components:
         comp = _parse(ComponentsDocument, pack_dir / name, f"{rel_dir}/{name}", issues)
         if comp:
@@ -119,6 +120,11 @@ def _load_pack(knowledge_dir: Path, pack_dir: Path, issues: list[Issue]) -> Load
             types += comp.types
             assemblies += comp.assemblies
             mappings += comp.role_mappings
+            designs += comp.design_systems
+    patterns = []
+    for name in c.patterns:
+        pat = _parse(PatternsDocument, pack_dir / name, f"{rel_dir}/{name}", issues)
+        patterns += pat.patterns if pat else []
     present = {f.relative_to(pack_dir).as_posix() for f in pack_dir.rglob("*") if f.is_file()}
     return LoadedPack(
         manifest=manifest,
@@ -133,6 +139,8 @@ def _load_pack(knowledge_dir: Path, pack_dir: Path, issues: list[Issue]) -> Load
         types=tuple(types),
         assemblies=tuple(assemblies),
         role_mappings=tuple(mappings),
+        design_systems=tuple(designs),
+        patterns=tuple(patterns),
         extra_files=tuple(sorted(present - listed)),
     )
 

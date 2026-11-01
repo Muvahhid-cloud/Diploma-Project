@@ -8,10 +8,44 @@ Changing a default changes generated models, so bump ENGINE_VERSION with it.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.building.enums import RoomType
-from app.modules.building.specification import FacadeMaterial, WindowStyle
+from app.modules.building.enums import RoofType, RoomType
+from app.modules.building.specification import ArchitecturalStyle, FacadeMaterial, WindowStyle
 
-ENGINE_VERSION = "layout@1.2.0"  # 1.2.0: stair cores on the facade fit their flights (K2.5)
+ENGINE_VERSION = "layout@1.15.0"  # 1.15.0: V7 step 1 (service windows at the main width, two
+# rooms in one bay separated, upper stair windows stacked).
+# 1.14.0: stair/hall/corridor windows on bay axes, one window
+# head per storey (V6 step 3).
+# 1.13.0: one main window width per facade wall and storey
+# (V6 step 2).
+# 1.12.0: no two windows of one room in one bay (V6 step 1).
+# 1.11.0: side facades in the bay rhythm (V5 step 3).
+# 1.10.0: facade bay grid (V5): bays per facade line,
+# windows on bay axes with one width per facade and storey, rooms snap to whole bays where
+# their minimums and area ranges allow.
+# 1.9.0: facade grid (V4): partitions of the storeys snap to
+# each other's facade grid, windows are placed top storey first and stack on shared axes,
+# garden/terrace doors stand on an upper window axis, rhythm windows below upper axes.
+# 1.8.0: architectural design quality (V3): BuildingModel
+# 1.3.0 with an entrance canopy (slab_kind "canopy") over the front door; roof covering per
+# roof type (flat roofs: gravel membrane), facade finish per facade material (timber: cladding
+# boards), facade zoning per architectural style (plinth storey, accent cladding on the garage;
+# never with a requested facade color). Wall cores (material_id) are unchanged.
+# 1.7.0: footprint shapes (V1.3): T-shaped single-storey
+# footprints, depth bars for L/T main bars (small or long houses), shapes without a generator
+# refused with the reason. Rectangular geometry unchanged (fingerprints of specs 01-10 as 1.6.0).
+# 1.6.0: L layout quality (V1.2): the wing's last room takes
+# the gallery's end, the main corridor's dead ends go to rooms (joining e.g. kitchen and dining),
+# garden-sized L band splits, the wing on either side of a garage, more L footprints evaluated
+# when an L is requested. Rectangular geometry unchanged (fingerprints of specs 01-10 as 1.5.0).
+# 1.5.0: L-shaped single-storey footprints (V1.1); rectangular
+# geometry unchanged (fingerprints of reference specs 01-10 equal to 1.4.0).
+# 1.4.0: Design Intelligence V1 — requirement priorities
+# (MUST/SHOULD), permissible area ranges, separations, layout patterns (soft), every valid built
+# candidate evaluated against the spec, bounded repair. Generated models change (golden files).
+# 1.3.0: BuildingModel 1.2.0; design systems and design intent
+# (facade color, facade-specific window sizes, room orientation; K3). Specs without them build
+# the same geometry as 1.2.0 (geometry fingerprints unchanged).
+# 1.2.0: stair cores on the facade fit their flights (K2.5)
 # 1.1.0: BuildingModel 1.1.0, optional TypeSet (K2)
 
 
@@ -24,6 +58,24 @@ class WindowPreset(_Config):
     height: float
     glazing_ratio: float  # target glazing / floor area for habitable rooms
     mullion_spacing: float
+
+
+class CanopyConfig(_Config):
+    """Entrance canopy over the front door (V3, slab_kind "canopy"). Construction defaults,
+    not rules: it projects `depth` from the facade, reaches `side` beyond each door jamb (less
+    where a window head would be cut) and hangs `clearance` above the door head."""
+
+    depth: float = Field(default=1.2, gt=0)
+    side: float = Field(default=0.45, ge=0)
+    thickness: float = Field(default=0.12, gt=0)
+    clearance: float = Field(default=0.25, ge=0)
+
+
+class FacadeZoning(_Config):
+    """Facade finishes beside the main one (V3); library material ids, None = main finish."""
+
+    plinth: str | None = None
+    accent: str | None = None
 
 
 class LayoutConfig(_Config):
@@ -65,7 +117,30 @@ class LayoutConfig(_Config):
     band_split_offsets: tuple[float, ...] = (-0.6, -0.3, 0.0, 0.3, 0.6)
     core_positions: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 1.0)
     variants_per_skeleton: int = 3
-    candidates_to_build: int = 6
+    # L topology (single storey, docs/3d-engine.md §16.10): main bar width/depth ratios, share
+    # of the floor area in the wing, band splits, and the shape limits of a real L.
+    l_main_aspects: tuple[float, ...] = (1.45, 1.8, 2.2)
+    l_wing_area_shares: tuple[float, ...] = (0.2, 0.3, 0.4)
+    l_band_split_offsets: tuple[float, ...] = (-0.3, 0.0, 0.3)
+    l_wing_min_length: float = 3.0  # how far the wing reaches beyond the main bar, at least
+    l_min_garden_frontage: float = 4.0  # garden facade of the main bar beside the wing
+    # Deepest garden band a garden-sized L split may ask for (V1.2, planner.garden_demands).
+    l_garden_band_max_depth: float = 6.0
+    # Depth bars (V1.3): main-bar depths above the shallowest double-loaded bar, and wing shares,
+    # for houses whose ratio bars are too shallow (small or long L/T footprints).
+    l_depth_steps: tuple[float, ...] = (0.0, 0.6, 1.2)
+    l_depth_bar_shares: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5)
+    t_min_side_frontage: float = 4.0  # T: garden facade on each side of the wing
+    t_min_wing_facade: float = 1.2  # T: a habitable wing room's reach beyond the garden facade
+    # T main bars are longer than L ones: the wing takes the middle of the garden facade.
+    t_main_aspects: tuple[float, ...] = (2.2, 2.6, 3.0)
+    # Preferred wing length (beyond the main bar) / main bar width: a balanced L (scored).
+    l_wing_ratio: tuple[float, float] = (0.4, 0.9)
+    candidates_to_build: int = 6  # built, validated and evaluated; the best one wins
+    # L footprints built when the user asked for an L (V1.2): distinct L shapes compared on
+    # the evaluation; rectangular alternatives keep their share of candidates_to_build.
+    l_requested_builds: int = 5
+    repair_candidates_to_build: int = 18  # extra builds when none meets every MUST requirement
     circulation_share: float = 0.22  # GFA overhead estimate when no GFA is specified
 
     # Stairs
@@ -100,6 +175,32 @@ class LayoutConfig(_Config):
     service_window: tuple[float, float, float] = (0.8, 0.6, 1.5)  # width, height, sill
     stair_window: tuple[float, float] = (1.2, 1.0)  # height, sill
     window_margin: float = 0.3
+    # Facade grid (V4, docs/3d-engine.md §16.14): an upper storey's room partitions on a facade
+    # snap to the partitions of the storey below when they are at most this far off, so the
+    # rooms (and the windows centred in them) stack. 0 switches it off.
+    facade_grid_snap: float = 1.2
+    # Facade bay grid (V5, docs/3d-engine.md §16.15): each facade line is divided into equal
+    # bays of bay_min_m..bay_max_m; windows stand on the bay centres with one width per facade
+    # and storey (at most bay_window_share of a bay). False reproduces layout@1.9.0 exactly
+    facade_bays: bool = True
+    bay_min_m: float = 3.0
+    bay_max_m: float = 4.2
+    bay_window_share: float = 0.6
+    bay_windows_per_room: int = 4
+    # Side facades (V5 step 3): habitable rooms take a window on every free bay axis of their
+    # side facades, this share of a bay wide (one width per side line and storey).
+    bay_side_rhythm: bool = True
+    # Window consistency (V6, docs/3d-engine.md §16.16): no two windows of one room in one bay
+    # (merged onto the bay axis, or the extra one dropped). False reproduces layout@1.11.0.
+    window_consistency: bool = True
+    # V7 step 1 (docs/3d-engine.md §16.17): service windows take the wall's main width, windows
+    # of two rooms in one bay are separated, upper stair windows stack on a window below.
+    # False reproduces layout@1.14.0.
+    window_quick_wins: bool = True
+    bay_side_window_share: float = 0.35
+    # Stair, hall and corridor windows on bay axes too (also on whenever window_consistency
+    # is, V6); off = they follow the windows of the other storeys (V4 axis rule).
+    bay_circulation_windows: bool = False
     lintel_min: float = 0.2  # wall above the highest opening
 
     # Garage, balconies, terraces
@@ -156,6 +257,52 @@ class LayoutConfig(_Config):
             FacadeMaterial.BRICK: "brick",
             FacadeMaterial.CONCRETE: "concrete",
             FacadeMaterial.TIMBER: "wood",
+        }
+    )
+    # Visible facade finish (wall right face) per facade material (V3). The wall core keeps
+    # `facade_materials`; only timber differs: its facade reads as cladding boards.
+    facade_finishes: dict[FacadeMaterial, str] = Field(
+        default_factory=lambda: {
+            FacadeMaterial.RENDER: "exterior_wall",
+            FacadeMaterial.BRICK: "brick",
+            FacadeMaterial.CONCRETE: "concrete",
+            FacadeMaterial.TIMBER: "cladding_timber",
+        }
+    )
+    # Entrance canopy (V3); None = no canopy. Material per architectural style (else trim).
+    entrance_canopy: CanopyConfig | None = Field(default_factory=CanopyConfig)
+    canopy_materials: dict[ArchitecturalStyle, str] = Field(
+        default_factory=lambda: {
+            ArchitecturalStyle.CLASSIC: "wood_dark",
+            ArchitecturalStyle.TRADITIONAL: "wood_dark",
+            ArchitecturalStyle.SCANDINAVIAN: "wood",
+            ArchitecturalStyle.MEDITERRANEAN: "wood",
+        }
+    )
+    # Roof covering per roof type (V3): a flat roof is not tiled.
+    roof_materials: dict[RoofType, str] = Field(
+        default_factory=lambda: {
+            RoofType.FLAT: "roof_membrane",
+            RoofType.GABLE: "roof",
+            RoofType.HIP: "roof",
+        }
+    )
+    # Facade zoning per architectural style (V3, building/design.py precedence: an approved
+    # design system's first style tag, else the spec's style). `plinth` = finish of the ground
+    # storey of multi-storey houses, `accent` = finish of a distinct volume (the garage). Never
+    # applied when a facade color is requested (that colour covers the whole facade), and only
+    # where it differs from the main finish. Appearance only: wall cores are unchanged.
+    facade_zoning: dict[ArchitecturalStyle, FacadeZoning] = Field(
+        default_factory=lambda: {
+            ArchitecturalStyle.MODERN: FacadeZoning(accent="cladding_timber"),
+            ArchitecturalStyle.MINIMALIST: FacadeZoning(),
+            ArchitecturalStyle.CONTEMPORARY: FacadeZoning(plinth="brick", accent="cladding_timber"),
+            ArchitecturalStyle.CLASSIC: FacadeZoning(plinth="brick"),
+            ArchitecturalStyle.TRADITIONAL: FacadeZoning(plinth="brick"),
+            ArchitecturalStyle.SCANDINAVIAN: FacadeZoning(accent="cladding_timber"),
+            ArchitecturalStyle.INDUSTRIAL: FacadeZoning(plinth="brick"),
+            ArchitecturalStyle.MEDITERRANEAN: FacadeZoning(),
+            ArchitecturalStyle.LUXURY: FacadeZoning(plinth="concrete", accent="cladding_timber"),
         }
     )
 

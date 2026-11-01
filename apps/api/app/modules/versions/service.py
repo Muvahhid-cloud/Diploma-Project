@@ -2,6 +2,8 @@
 
 import hashlib
 import uuid
+from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,11 +78,16 @@ class VersionService:
         rules_profile_ref: str,
         prompt: str | None = None,
         report: GenerationReport | None = None,
+        operations: Sequence[dict[str, Any]] | None = None,
+        parent_version_id: uuid.UUID | None = None,
     ) -> ProjectVersion:
-        """Append a version and make it the project's current one. Commits."""
+        """Append a version and make it the project's current one. Commits.
+
+        `parent_version_id` defaults to the project's current version; edits pass the version
+        they were made on, with the `operations` that turn it into this one."""
         version = ProjectVersion(
             project_id=project.id,
-            parent_version_id=project.current_version_id,
+            parent_version_id=parent_version_id or project.current_version_id,
             number=await self.repo.next_number(project.id),
             label=label,
             created_by=user.id if user else None,
@@ -88,7 +95,7 @@ class VersionService:
             prompt=prompt,
             spec=spec.model_dump(mode="json") if spec else None,
             model=model.model_dump(mode="json"),
-            operations=[],
+            operations=[dict(op) for op in operations or ()],
             schema_version=model.schema_version,
             engine_version=model.engine_version,
             rules_profile=rules_profile_ref,

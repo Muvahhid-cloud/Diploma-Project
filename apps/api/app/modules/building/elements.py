@@ -33,6 +33,7 @@ from app.modules.building.enums import (
 )
 from app.modules.building.primitives import (
     Frozen,
+    HexColor,
     MaterialId,
     Meters,
     NonNegativeMeters,
@@ -42,6 +43,7 @@ from app.modules.building.primitives import (
     Vec2,
     Vec3,
 )
+from app.modules.building.specification import WindowStyle
 from app.modules.building.types import AssemblyId, TypeId
 
 Polygon = Annotated[list[Vec2], Field(min_length=3)]
@@ -84,6 +86,10 @@ class WallProperties(Frozen):
     # For exterior walls authored counter-clockwise, left = interior, right = exterior.
     finish_left_id: MaterialId | None
     finish_right_id: MaterialId | None
+    # Display colors of the faces (1.2.0, K3 appearance intent): the finish material is drawn in
+    # this color. Visual only; the finish material (and anything derived from it) is unchanged.
+    finish_left_color: HexColor | None = None
+    finish_right_color: HexColor | None = None
 
 
 class Wall(ElementBase):
@@ -130,6 +136,9 @@ class WindowProperties(Frozen):
     window_kind: WindowKind
     frame_material_id: MaterialId | None
     mullions: int = Field(ge=0, le=12)  # vertical glazing bars; panes = mullions + 1
+    # Design size class the engine chose it as (1.2.0): standard | large | panoramic for the
+    # main windows of habitable rooms; None for service/stair windows and older models.
+    size_class: WindowStyle | None = None
 
 
 class Window(ElementBase):

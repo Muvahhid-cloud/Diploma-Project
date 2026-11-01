@@ -4,6 +4,8 @@ import type { CameraPresetId } from "@/engine/scene/camera-presets";
 import type { LevelFilter } from "@/engine/scene/visibility";
 
 export type Projection = "perspective" | "orthographic";
+/** The 3D model or its 2D floor-plan drawing (both derived from the same BuildingModel). */
+export type ViewMode = "3d" | "plan";
 
 export interface CameraRequest {
   preset: CameraPresetId;
@@ -19,6 +21,15 @@ interface ViewerState {
   projection: Projection;
   section: { enabled: boolean; height: number };
   cameraRequest: CameraRequest | null;
+  viewMode: ViewMode;
+  /** Level shown in the plan view (null = the first level). */
+  planLevelId: string | null;
+  /** Ambient occlusion + SMAA post-processing (render quality; off = plain renderer). */
+  effects: boolean;
+  /** Reference grid over the site ground. */
+  showGrid: boolean;
+  /** Site context (V2): paving, fence, trees and shrubs around the building. */
+  showSite: boolean;
 
   /** Floor navigation: isolates a level and frames it; "all" keeps the current camera. */
   selectFloor: (filter: LevelFilter) => void;
@@ -28,6 +39,12 @@ interface ViewerState {
   setShowExteriorWalls: (show: boolean) => void;
   setProjection: (projection: Projection) => void;
   setSection: (section: Partial<ViewerState["section"]>) => void;
+  setViewMode: (viewMode: ViewMode) => void;
+  setPlanLevel: (levelId: string | null) => void;
+  setEffects: (effects: boolean) => void;
+  setShowGrid: (showGrid: boolean) => void;
+  setShowSite: (showSite: boolean) => void;
+  /** Back to defaults for a newly loaded model; the 3D / plan choice and render options are kept. */
   reset: () => void;
 }
 
@@ -38,12 +55,17 @@ const INITIAL = {
   projection: "perspective" as Projection,
   section: { enabled: false, height: 1.2 },
   cameraRequest: null as CameraRequest | null,
+  planLevelId: null as string | null,
 };
 
 let nonce = 0;
 
 export const useViewerStore = create<ViewerState>()((set) => ({
   ...INITIAL,
+  viewMode: "3d",
+  effects: true,
+  showGrid: false,
+  showSite: true,
   selectFloor: (filter) =>
     set(
       filter === "all"
@@ -56,6 +78,11 @@ export const useViewerStore = create<ViewerState>()((set) => ({
   setShowExteriorWalls: (showExteriorWalls) => set({ showExteriorWalls }),
   setProjection: (projection) => set({ projection }),
   setSection: (section) => set((s) => ({ section: { ...s.section, ...section } })),
+  setViewMode: (viewMode) => set({ viewMode }),
+  setPlanLevel: (planLevelId) => set({ planLevelId }),
+  setEffects: (effects) => set({ effects }),
+  setShowGrid: (showGrid) => set({ showGrid }),
+  setShowSite: (showSite) => set({ showSite }),
   reset: () => set({ ...INITIAL, cameraRequest: request("exterior", false) }),
 }));
 

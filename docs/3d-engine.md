@@ -1,6 +1,6 @@
 # 3D Engine
 
-Status: **Implemented for Phase 2 (v0.4)** · Last updated: 2026-09-28
+Status: **Implemented for Phase 2 (v0.4)**; rendering V1 (§21), furniture and site V2 (§22), architectural design quality V3 (§16.13, §23) · Last updated: 2026-11-01
 
 The "3D engine" is four parts with hard boundaries:
 
@@ -17,10 +17,10 @@ Positions of everything are decided by the model (the layout engine for generate
 
 > **Same BuildingModel + same EngineConfig ⇒ identical geometry** (same descriptors, same order, same buffers, same material keys).
 
-- Builders never call `Math.random`/`Date.now` or read mutable globals.
+- Builders never call `Math.random`/`Date.now` or read mutable globals. Textures, lights and post-processing are applied by the viewer after building and never feed back into geometry.
 - Elements are built in **id order**, independent of document order (tested by building a reversed document).
 - Walls joins are resolved in id order; polygon orientation is normalized before triangulation.
-- `EngineConfig.version` (`engine@1`) is part of every geometry cache key; bump it when builder output changes.
+- `EngineConfig.version` (`engine@2` since V1 visual quality, §21) is part of every geometry cache key; bump it when builder output changes.
 - Verified by Vitest: a hash over every descriptor key, material list, matrix and position/normal/uv buffer must be equal across builds (`engine/scene/build-scene.test.ts`).
 
 ---
@@ -75,7 +75,7 @@ alignment: center -> v in [-t/2, t/2], left -> [0, t], right -> [-t, 0]
    - *L-corner* (ends meet) → **pinwheel**: the arriving wall ("end") extends by half the other's thickness, the leaving wall ("start") trims by the same amount — corners close with no overlapping volume and no coplanar faces. Both-start/both-end corners: smaller id extends.
    - Collinear continuation → unchanged.
 2. **Panel decomposition** (`wallPanels`, no CSG): the face `[u0, u1] × [0, height]` minus hosted openings = full-height panels between openings + a sill panel below and a lintel panel above each opening. Openings are clamped to the wall; overlaps merge.
-3. Each panel is a box; faces get materials `±u / ±z → material_id (core)`, `+v → finish_left_id`, `−v → finish_right_id`. The opening reveals therefore show the core (brick, render).
+3. Each panel is a box; faces get materials `±u / ±z → material_id (core)`, `+v → finish_left_id`, `−v → finish_right_id`. The opening reveals therefore show the core (brick, render). A face with a display color (`finish_left_color` / `finish_right_color`, BuildingModel 1.2.0, K3) uses the material key `<finish id>@#rrggbb`: `MaterialCache` creates the library preset of that id with only its color replaced (same roughness/metalness, same material id — appearance, not a new material).
 4. All panels of a wall become **one mesh** with one geometry group per material.
 
 Exterior walls are authored counter-clockwise, so their left face is the interior and the right face the facade.
@@ -104,7 +104,7 @@ Outline + holes (e.g. the stair void) extruded **downward** from the slab's top 
 | Type | Implementation |
 |---|---|
 | `flat` | Outline prism + parapet boxes along each edge (inside the outline) |
-| `gable` | Rectangle; ridge along `ridge_axis` at `(span/2)·tan(pitch)`; two slopes, underside, eave + verge bands. **No gable-end wall infill yet** (see limitations) |
+| `gable` | Rectangle; ridge along `ridge_axis` at `(span/2)·tan(pitch)`; two slopes, underside, eave + verge bands; since V3 the gable ends are closed (infill triangle in the supporting wall's finishes, §23.1) |
 | `hip` | Rectangle; closed-form skeleton (ridge inset by half the span from each end), four faces, underside, fascia |
 
 The demo uses a 25° hip roof whose underside meets the wall tops at the outer face (computed in the fixture).
@@ -115,7 +115,7 @@ The demo uses a 25° hip roof whose underside meets the wall tops at the outer f
 |---|---|
 | `stair` (`stair.ts`) | Side profile (n risers, n−1 treads, sloped soffit parallel to the pitch, waist = riser + 120 mm) extruded across the width |
 | `railing` (`railing.ts`) | Posts at ≤ `post_spacing`, top rail following `rise` (sloped for stairs), balusters every 120 mm (`bars`) or a glass panel (`glass`, level only) |
-| `furniture` (`furniture/`) | Procedural placeholders per `furniture_kind` (18 kinds) sized from the element's dimensions; shower glass is a separate glass part. `assets.ts` resolves `asset_id` → registered GLB/glTF asset; with none registered, placeholders are used |
+| `furniture` (`furniture/`) | Procedural placeholders per `furniture_kind` (18 kinds) sized from the element's dimensions; shower glass is a separate glass part. Since V2 (§22) the viewer draws a CC0 glTF model for kinds that have one (`assets.ts` → `data/materials/models.json`), fitted to the element's width × depth × height; the placeholder stays the pick proxy and the fallback |
 
 ## 10. Object UUID mapping & mesh ↔ model mapping
 
@@ -174,7 +174,8 @@ Demo house (measured): 116 elements → 144 meshes, ~7k triangles; validate + in
 | Shared materials (`MaterialCache`) | ☑ |
 | Memoized meshes, granular Zustand selectors | ☑ |
 | Explicit disposal of replaced geometry; meshes use `dispose={null}` | ☑ |
-| PCF sun shadows (2048²), disabled while a section cut is active | ☑ |
+| PCF sun shadows (2048², radius 4), disabled while a section cut is active | ☑ |
+| Optional post-processing (N8AO half-res, SMAA), contact shadows; shared textures per (file, repeat) | ☑ V1 (§21) |
 | InstancedMesh / BatchedMesh, Web Worker builds, LOD, BVH raycasting | Deferred until a model needs it (budget: 3–5k elements) |
 
 ---
@@ -198,7 +199,8 @@ viewer/
   ModelRoot         the model->world group; ElementMesh per descriptor; selection outline
   CameraRig         drei OrbitControls (rotate / zoom / pan), perspective + orthographic cameras,
                     animated presets
-  SceneEnvironment  hemisphere + ambient + shadowed sun, ground disc, infinite grid
+  SceneEnvironment  HDRI lighting, soft-shadowed sun, contact shadows, textured ground, sky, grid (§21)
+  PostEffects       optional N8AO + SMAA + tone mapping (§21)
   SectionPlane      horizontal clipping plane (renderer clipping planes)
 stores/ (Zustand, one concern each)
   project-store · building-store · selection-store · viewer-store (floors, inspection,
@@ -217,14 +219,14 @@ stores/ (Zustand, one concern each)
 
 ## 15. Known limitations (Phase 1)
 
-- Gable roofs have no gable-end wall infill (the demo uses a hip roof); shed roofs are not implemented.
+- Shed roofs are not implemented. (Gable-end infill exists since V3, §23.1.)
 - Walls are single solids with face finishes; build-up layers (insulation, block, plaster) are not modelled or rendered yet.
 - Door leaves are always drawn closed; no swing arcs. Windows have one pane behind the mullions.
 - No room labels, ceilings, skirting, stair nosings or stair stringers.
 - Selection is single-element; no hover highlight (cursor only), no multi-select or "select parent".
 - Section cut is horizontal only, global (also clips grid/ground); no section fill (hatching).
-- Walk (first-person) mode, plan (2D) view and measurement tools are not implemented (Phase 8).
-- Furniture is procedural placeholder geometry; the GLB asset hook exists but no assets are registered and the viewer does not load GLBs yet.
+- Walk (first-person) mode and measurement tools are not implemented (Phase 8). The plan (2D) view exists since Phase 3.6 (§19).
+- Furniture is procedural placeholder geometry (Phase 1); since V2 most kinds are drawn by CC0 glTF models (§22).
 - `ResizeObserver`-driven canvas sizing: in environments that throttle rendering (hidden embedded browser panes) the canvas initialises on the first interaction; normal browser tabs are unaffected.
 - `THREE.Clock` deprecation warning comes from React Three Fiber internals.
 
@@ -334,12 +336,320 @@ built candidate ─────────► validate_model        every model
 - **Storey height vs door sizes.** Door heights and thicknesses are fixed (by the component type, or by the engine defaults the generic types mirror), so they are never shrunk. layout@1.1.0 failed with `LAYOUT_INVALID` ("engine bug") for storeys below 2.6 m when a 2.4 m sliding door was needed; now a required door that cannot fit is a user-fixable `LAYOUT_INFEASIBLE` (`TYPE_GEOMETRY_MISMATCH`, path `/targets/floor_to_floor_height_m`, suggestion "raise the floor-to-floor height to at least … m"), and the optional garden door is left out with a note. Fixed-size service and stair windows are skipped where they would pass the wall top.
 - **Effect on output.** Only facade-core skeletons changed, so geometry changed only where layout@1.1.0 produced the stair defect: 7 of 10 reference specs keep their `geometry_sha256`; 05, 06 and 09 keep their layout on a 0.1 m (05: 0.2 m, two lanes) wider footprint. ENGINE_VERSION is `layout@1.2.0`.
 
+### 16.8 Design systems and design intent (layout@1.3.0, Phase 3.5 K3)
+
+`generate_layout(..., type_set, design_system: DesignSystemSnapshot | None = None)`. The generation pipeline resolves the spec's design system (approved only; docs/knowledge.md §3.5) into a snapshot plus the type set of its role mapping; the engine never reads the catalog. `building.design.effective_design(spec, system)` gives the `DesignRecord` the model carries (precedence: [building-model.md](building-model.md) §2.3).
+
+```
+rooms[].faces ─────────────► zoning wishes          front → street-side (south) band, rear → garden-side
+                              (planner, penalty 3.0)  (north) band, before balcony/terrace host wishes;
+                                                      unmet → ROOM_FACADE_UNMET warning
+design.windows ─────────────► _windows (build.py)    per facade size class (resolve_window_preferences):
+                                                      preferred facades are glazed first with the
+                                                      emphasis preset (sill/height/mullions/glazing ratio
+                                                      of that style or its type), excluded facades get
+                                                      standard windows; placed by WallPlan.place (the
+                                                      K2.5 interval arithmetic), recorded as size_class
+design.facade_color ────────► _walls                 finish_right_color of every exterior wall
+                                                      (house + garage); materials unchanged
+design system ──────────────► types, finishes,       role-mapping types (attach_types incl. fixed
+                              furniture palette      railing kind), dry/wet floor, interior/wet wall
+                                                      finishes, furniture material substitution
+built candidate ────────────► validate_model         + design_checks: an emphasised window on an
+                                                      excluded facade (or an off-system component) is an
+                                                      error → the next candidate is tried
+```
+
+- **Facade model.** Plan sides S/N/W/E of the rectangular footprint are the front/rear/left/right facades (`building/facades.py PLAN_SIDE`); the model derives the facade of any exterior wall from its outward normal, so nothing directional is stored.
+- **When a preferred facade has too little wall.** Every segment of the facade is tried (widths shrink to the free interval, never below the rules' minimum window width). A preferred facade that ends with no emphasised window is reported (`WINDOW_PREFERENCE_UNSATISFIABLE` warning, requested-vs-delivered check "not met") — the emphasis is never moved to an excluded facade.
+- **No-intent path unchanged.** Without intent every facade uses `style.window_style` and the old segment order; all ten reference specs keep their pre-K3 geometry fingerprints. ENGINE_VERSION is `layout@1.3.0` (BuildingModel 1.2.0).
+
+### 16.9 Design Intelligence V1 (layout@1.4.0)
+
+`generate_layout(..., patterns: PatternLibrary | None = None)`. The generation pipeline passes the pattern library (docs/knowledge.md §3.6); golden files and tests that pass nothing get no pattern guidance.
+
+```
+spec (1.2.0) ──► program: explicit targets carry their permissible range and MUST flag;
+                 MUST pairs (adjacent / open / separate)
+             ──► select_patterns (layout/patterns.py): triggers read from the spec
+                 garden_focus   rooms facing rear | rear window emphasis | terrace | priority
+                 narrow_site    footprint limit < 0.9 × side of a square storey | plot w < 0.8 d
+                 open_plan      open_kitchen_living | open_to pairs | priority
+                 compact        priority | storey area ≤ pattern threshold
+                 privacy_zoning separate_from | priority
+                 → PatternGuidance (band preference per room type: explicit wishes win, first
+                   pattern wins; affinities/separations summed; aspect ranges intersected)
+             ──► search (planner.py), scored additionally on
+                 area outside the permissible range (8 × relative excess, +4 for a MUST),
+                 spec pairs (adjacent 1.5, open 1.5, separate 1.2; MUST 5.0),
+                 pattern band preferences, type affinities/separations (× 0.5), aspect range (1.5)
+             ──► build + validate the best 6 candidates, evaluate each (building/evaluation.py)
+             ──► rank: unmet MUST count, then design score, then plan score, then order
+             ──► none meets every MUST? bounded repair: build up to 18 more (score order)
+                 until one does; still none → LAYOUT_REQUIREMENTS_UNMET with each unmet MUST
+                 (expected vs delivered) — never relaxed
+```
+
+`LayoutResult` adds `evaluation`, `patterns` (id, name, source, status, support, reasons) and `candidates` (every valid built candidate: plan score, design score, MUST met, footprint, chosen); `LayoutMetrics` adds `candidates_valid`, `repair_builds`, `design_score`. Notes name each applied pattern with its status. The generation report stores all of it (`versions/schemas.py`).
+
+Determinism is unchanged: patterns are applied in id order, ties break on rounded scores and candidate order, never on object identity (tested under two `PYTHONHASHSEED`s). Patterns only change scores, never the skeleton list, so `sk_index` seeding is untouched.
+
+**Quality benchmark.** `data/fixtures/benchmark/design-benchmark.v1.json` (requests with hard/soft expectations by category, tagged by the set they were added in — 12 in `v1`, 6 in `v1.1` (L), 6 in `v1.2` (L quality) — and reported per set) runs prompt → offline interpreter → spec checks → layout with patterns → checks computed from the model independently of `building/evaluation.py` (`apps/api/evals/design_benchmark.py`, `pnpm benchmark`; regression tests in `tests/evals`). Known gaps are recorded with their reason and must keep failing until fixed.
+
+### 16.10 L-shaped footprints (layout@1.5.0, Design Intelligence V1.1)
+
+A second footprint topology for **single-storey** houses. Code: `layout/plan.py` (Skeleton topology fields), `layout/planner.py` (`l_skeletons`, wing band), `layout/regions.py` (gallery, band rectangles along either axis), `layout/build.py` (`envelope`, wall-based facade segments, slabs, roofs), `layout/topology.py` (selection), `building/evaluation.py measure_footprint`.
+
+**Geometry.** The L is the existing double-loaded *main bar* `[0, W] × [0, D]` plus a *wing* on the garden side at its west or east end:
+
+```
+            wing (rooms | gallery)                 y = D + wing_length
+          ┌──────────┬────┐
+          │  wing    │ g  │   garden (partly enclosed)
+          │  rooms   │ a  │
+          │ (bedroom │ l  │    ┌── inside corner (Ww, D)
+          │  wing)   │ l  │    │
+  y = D ──┤          │ e  ├────┴──────────────────────────┐
+          │          │ r  │   garden band (day rooms)      │
+          │          │ y  ├────────────────────────────────┤ corridor
+          │          └────┘                                │
+          ├────────────────────────────────────────────────┤
+          │ hall │          street band                    │
+  y = 0   └────────────────────────────────────────────────┘
+          x = 0   Dw   Ww                                  x = W
+```
+
+- The wing's room band (`wing_depth`: the garden band's depth, or since layout@1.6.0 the street band's depth for garden-sized splits, §16.11) runs along y from the main corridor to the wing's end, on the wing's **outer** side; the **gallery** (corridor width C) runs on its inner, garden side and continues the main corridor (one L-shaped corridor region). The garden band of the main bar spans only `garden_x` (beside the wing). Rooms in the wing are laid out by the same band machinery as the other bands (`Strip.axis = "y"`, tucks against the gallery).
+- **Parameters** (`LayoutConfig`): `l_main_aspects` (main bar W/D), `l_wing_area_shares` (share of the floor area beyond the main bar), `l_band_split_offsets`; limits `l_wing_min_length` (the wing must reach ≥ 3 m beyond the main bar), `l_min_garden_frontage` (≥ 4 m of garden facade beside the wing); scored preference `l_wing_ratio` (wing length / main width 0.4–0.9). The wing goes opposite an attached garage (layout@1.5.0; since 1.6.0 also on the garage's side, §16.11).
+- **Envelope** (`build.envelope`): a counter-clockwise loop of 7 exterior walls; the outer side is split where the wing starts so each wall belongs to one volume. Rectangular plans keep their four walls, keys and order (fingerprints of reference specs 01–10 unchanged). Facade segments are computed per exterior wall (each opening has exactly one host); interior walls are derived as before between inside regions.
+- **Inside corner.** The main bar's garden wall arrives at the corner and the wing's inner wall leaves it (renderer pinwheel: arriving extends, leaving trims); the partition continuing the wing's inner line inside the house stops at the exterior wall's inner face. The renderer rule (`wall-layout.ts`): exterior walls ignore interior walls at L-corners; interior walls trim there like a T.
+- **Slabs and roofs.** Ground slab = union of both volumes. Flat roof: one L-shaped outline. Pitched roof: a main roof and a wing roof (each covering its own walls with the same overhang and eave height; the two overlap without valley geometry — a conceptual model).
+- **Terrace** stays within the main bar's garden facade (clear of the wing).
+
+**Selection** (`layout/topology.py`): an explicit `design.footprint_shape` (spec 1.2.0) is a user requirement — `rectangular` → rectangles only; `l_shape` MUST → L only, and if none fits, `LAYOUT_INFEASIBLE` with the reasons and whether a rectangle would fit (never a silent rectangle); `l_shape` SHOULD → both are searched and a valid L that meets every MUST is ranked first, otherwise the rectangle is kept with `LAYOUT_TOPOLOGY_FALLBACK`. Without a request, only the experimental pattern `pattern.l_shaped_garden_wing` (garden focus **and** privacy, one storey, ≥ 110 m²) adds L candidates, which then compete with rectangles on the evaluation only. A garden wish alone never brings an L. L skeletons are enumerated after the rectangular ones, so rectangular seeds never shift. When both topologies are searched, each gets an equal share of the built candidates (L: the best of each distinct footprint first).
+
+**Reporting.** `LayoutResult.topology` / the version report's `topology`: the shape **measured on the validated model** (room corners snapped to the 1 mm grid before the union, so float noise between outlines never counts as corners) (`measure_footprint`: union of ground-floor rooms; 4 corners = rectangular, 6 corners with one inside corner = L), the requested shape and priority, the topologies searched and why, candidates per topology, and why the generated one won (design scores of the best of each). The evaluation checks a requested shape against the measured one.
+
+### 16.11 L layout quality (layout@1.6.0, Design Intelligence V1.2)
+
+The V1.1 L wasted space and missed garden intent: a gallery along the whole wing and a main corridor running to both facades (≈ 24 % circulation), a garden band too shallow and short for the living spaces, kitchen and dining facing each other across the corridor. V1.2 changes the L only; rectangular plans are untouched (fingerprints of reference specs 01–10 unchanged, rectangular seeds unchanged).
+
+- **Wing end room** (`Strip.end_wrap_depth`, `StripLayout.wrap_from`): the last room of the wing takes the gallery's end. The gallery stops a door's reach (`door_reach`: door + 2 × `door_margin`) into that room, whose door sits on that stretch; the room wraps around the gallery's end (an L-shaped room). Its column is sized for the same area. Not for a tucked room, nor where the room would be too narrow (≥ door reach + `remainder_min_depth`).
+- **Corridor ends** (`planner.corridor_cuts`, `plan.CorridorCut`): the main corridor's dead ends are given to rooms. *Far end* (opposite the wing): the corridor stops a door's reach into the last garden-side and street-side rooms; the room further below its target area takes the rest, so the two now share a wall. *Near end* (under the wing): the stub beyond the gallery goes to the first street-side room or the wing's first room. Never at the end with the garage door, beside the hall or a tucked room, for an end shorter than `remainder_min_depth`, between rooms the spec keeps apart, or between a bedroom/study and a living space (privacy).
+- **Far-end alignment** (`planner.align_far_end`): wished neighbours that landed on opposite sides of the corridor (spec pairs by weight, then the implicit kitchen–dining / dining–living affinity) are moved to the corridor's far end, where the cut joins them — the kitchen can stay on the street side and still meet the dining room on the garden side.
+- **Garden-sized splits** (`planner.garden_demands`, `_garden_split`): besides the offset splits, each main bar gets band splits whose garden band holds the rooms that belong on the garden (living spaces and rooms facing the rear or hosting the terrace, plus the dining room with a `garden_connection` priority; then also the dining room): `Dn² + (W − D)·Dn = demand`, `Dn ≤ l_garden_band_max_depth` (6 m), street band ≥ `min_band_depth`; the wing's rooms then take the street band's depth. Appended after all other L skeletons (seeds of the others unchanged).
+- **Wing beside a garage**: the wing may also stand on the garage's side (the garage, y ≤ D, and the wing, y ≥ D, never meet); then the far corridor end is free for a join and the near end keeps the garage door.
+- **Day rooms out of the bedroom wing**: living, dining and kitchen in the wing cost 1.6 (more than a living room on the street side, 1.5), so the wing's north end is no back door to the garden.
+- **Search score (L only)**: `L_CIRCULATION_WEIGHT` (12) × circulation share (`l_circulation_area`: corridor less its cut ends, gallery up to the wrap, hall), since rooms grow when the corridor shrinks and the area terms would otherwise favour a longer corridor.
+- **More L footprints evaluated when the user asks for an L** (`l_requested_builds` = 5; rectangular alternatives keep 3). A pattern-suggested L keeps the equal share — it must not win by getting more attempts.
+
+**Evaluation** (`building/evaluation.py`): new criterion `garden_frontage` when the client asked for a garden connection (priority, or a living space facing the rear): the share of the garden facade, measured along the house's exterior walls (garage excluded), that living/dining spaces hold, naming what holds the rest; `garden` names the living spaces that miss the garden. Criteria are the same for both topologies; an L gains nothing for being an L (compactness counts its longer perimeter against it). `ROOM_FACADE_UNMET` is measured on the model's exterior walls (a mid-wing room is not on the garden facade) and names the rooms that hold that facade. `measure_footprint` (and the benchmark) snap room outlines to the 1 mm grid first: outlines are position + offset sums, and float noise (10.299999999999999 vs 10.3) left zero-width slits that made a valid L measure as "other". The evaluation's other measurements are not snapped yet: the same noise can measure walls rooms do share as 0 m (`_Facts.shared`; kitchen–dining in candidates of reference spec 01) and inflate the compactness outline (reference spec 11 reports 1.55× instead of about 1.19×, compactness 0 %). Snapping them changes the chosen candidate of reference specs 01 and 08 (shared edges) and 08 (compactness), so it is left as an open decision rather than changed silently with the L work.
+
+**Measured** (benchmark, offline interpreter, layout@1.5.0 → 1.6.0): circulation of the four V1.1 L requests 22.7–24.2 % → 18.7–20.7 %; their soft expectations 1/4 → 3/4 (left: an explicit 30 m² living room delivered at 27.4 m², inside its ±10 % range, outside ±5 %); reference spec 11: circulation 25.5 % → 21.3 %, living and dining on the garden facade (the living room was on the street side), kitchen, dining and living sharing walls, but its SHOULD room sizes are met less well (area accuracy 0.68 → 0.55). Rectangular plans: unchanged (v1 benchmark set identical). Benchmark set `v1.2` adds six regression requests (all hard expectations hold; soft 8/10).
+
+### 16.12 Footprint shapes and T-shaped footprints (layout@1.7.0, Design Intelligence V1.3)
+
+Trigger: "make me a long L designed house with the yellow walls" produced a yellow **rectangle**. Two causes, both fixed: the model traced the shape as *should* (the prompt allowed *must* only for words like "must/required"), and every L main bar was too shallow for two bands at 115 m² (bars were sized only from fixed width/depth ratios), so the preference fell back silently-but-reported to a rectangle.
+
+**Shape intent** (`building/footprint.py`) keeps four questions apart:
+
+| | where | what |
+|---|---|---|
+| requested | `design.footprint_shape` (spec 1.2.0, values `rectangular`, `l_shape`, `t_shape`, `u_shape`, `courtyard`) | recorded even when it cannot be built |
+| priority | the `/design/footprint_shape` requirement trace | `shape_priority(quote)`: an explicit request is MUST, softened wording ("if possible", "ideally", "… is fine too") SHOULD |
+| supported | `CAPABILITIES` | generator id, storey limit, limitation text |
+| feasible | the layout engine | `LAYOUT_INFEASIBLE` with reasons / `LAYOUT_TOPOLOGY_FALLBACK` |
+
+One vocabulary (`SHAPE_WORDS`: "L-shaped", "L shape", "L designed", "an L house", "L-plan", "horseshoe", "atrium" …; never an L-shaped sofa or kitchen) serves the offline interpreter; the AI prompt (building-generation@5) lists the enum, the capabilities (generated from `CAPABILITIES`) and the priority rule, and `normalize_shape_requirement` applies `shape_priority` to any model's answer before validation (note `AI_SHAPE_PRIORITY`). A required shape without a generator (or beyond its storey limit) is a spec error `SPEC_FOOTPRINT_UNSUPPORTED` that is **not repairable** (`ai/interpreter.py USER_LIMITS`: a repair could only drop or soften it) — the generation fails with `SPEC_UNSUPPORTED` and the reason; the engine refuses it too (`LAYOUT_SHAPE_UNSUPPORTED`). A preferred unsupported shape gives a rectangle with `LAYOUT_TOPOLOGY_FALLBACK` and `topology.limitation`.
+
+| shape | generator | storeys |
+|---|---|---|
+| rectangular | `rect` | 1–3 |
+| L-shaped | `l` (§16.10/16.11) | 1 |
+| T-shaped | `t` (below) | 1 |
+| U-shaped, courtyard | none yet — refused with the reason | — |
+
+**Depth bars** (L and T): main bars whose depth comes from the bands (2 × `min_band_depth` + C + `l_depth_steps`) and width from the area (`l_depth_bar_shares`). They are a *fallback family*: `search` tries them for a wing topology only when its ratio bars give no feasible layout, so every established L result is unchanged (reference spec 11 identical). The reported request now gives a 10.2 × 9.0 m L (114.75 m², yellow) — as stored (should: L design score 0.95 vs 0.67 for the best rectangle) and as normalized (must).
+
+**T topology** (`Skeleton.topology = "t"`, `wing_x0`): the main bar plus one wing from the middle of its garden facade (`wing_x0` centred), its rooms on the `wing_side` half, the gallery beside them; garden bands `N` and `N2` on both sides (`Skeleton.garden_ranges`), each ≥ `t_min_side_frontage`; main-bar ratios `t_main_aspects` (longer than an L's: the wing takes the middle). Envelope: 8 walls `S, E, N:E, wing:E, wing:N, wing:W, N:W, W`, two inside corners (same renderer join rule as the L); slabs and roofs as for the L (flat: one 8-cornered outline; pitched: main + wing roof). Corridor dead ends are cut at both main-bar ends; the wing's last room takes the gallery's end. The part of the wing band inside the main bar has no outside wall: a habitable wing room must reach `t_min_wing_facade` beyond the garden facade (`_t_wing_rooms_lit`), and a service unit is put first in the wing (`service_first_in_t_wing`, pulled from another band if the wing has none). `measure_footprint` classifies 8 corners / 2 inside as `t_shape` (inside corners on one line, the stem between them), `u_shape` (adjacent inside corners) or `other`, and one enclosed hole as `courtyard`. Reference spec 12 (`12-t-shaped-bungalow-170.spec.json`, golden + `generated-t-house.model.json`, web 3D-engine test).
+
+Benchmark set `v1.3` (8 requests): rectangular, the reported yellow L (exact words) and its paraphrase, a T villa, U and courtyard (refused; their geometry recorded as known gaps), an L preference, and the 12 m plot that used to be infeasible. The v1 courtyard case now expects an honest refusal; the v1.1 infeasible-plot case uses a 9.3 m plot (12 m now fits an L).
+
+### 16.13 Architectural design quality (layout@1.8.0, V3)
+
+BuildingModel 1.3.0. Details and rationale: §23. In the engine:
+
+- **Roof coverings** per roof type (`LayoutConfig.roof_materials`): flat roofs (incl. garage roofs) `roof_membrane`, pitched `roof`. The roof type itself still comes from `style.roof` (or the design system default) — never random.
+- **Facade finishes** (`facade_finishes`, `facade_zoning`, `build.facade_zones`): the wall core keeps `facade_materials[style.facade_material]` (the benchmark checks it); the right-face finish is the facade's look — timber reads as `cladding_timber`, and per architectural style (an approved design system's first style tag first) a **plinth** finish on the ground storey of multi-storey houses and an **accent** finish on the garage volume. No zoning when a facade colour applies (it covers the whole facade) or where a zone equals the main finish. Reported as a design-report note ("Facade zoning (contemporary): …").
+- **Entrance canopy** (`entrance_canopy`, `canopy_materials`, `build._canopies`): a `slab_kind: canopy` slab per entrance door, `clearance` above the door head, `depth` out from the outer face, `side` beyond each jamb but stopping 5 cm short of any window whose head it would cut; skipped if it would not fit under the next level or would enter another wall. Untyped (`element_role` → None). Validated by `slab.canopy` (building-model.md §4.1); canopies are not floor slabs for `slab.no_overlap`, `wall.on_slab` or stair checks.
+- **Window axes** (`_windows` → `WallPlan.place(center=…)`): on upper storeys a window is centred on the axis of a window below on the same facade line when one fits its room's facade segment (reusing a slightly wider window's width, or narrowing to ≥ 70 % and ≥ the rules' minimum width; the remaining glazing goes to the room's next window). Ground-storey placement is unchanged. Upper exterior windows on an axis below, reference specs 01 and 04–09: 33/84 before, 41/84 after.
+
+Golden files: every reference spec changes (a canopy each; garage/flat roof coverings; zoning; axes) — rooms, areas, counts and warnings unchanged except one window fewer in spec 05 (an aligned, narrower window met the room's glazing without its second window).
+
+### 16.14 Facade grid (layout@1.9.0, V4)
+
+The storeys share a facade grid so upper windows stand on the windows below and repeat in a
+rhythm. No schema change; `LayoutConfig.facade_grid_snap` (1.2 m; 0 = layout@1.8.0 exactly, test).
+
+- **Partitions (planner).** `facade_grid(levels)` collects, per facade line, the band ends and the
+  *facade partitions* of the storeys laid out so far (`facade_partitions`: where the room seen on
+  the facade changes; a tucked room shows its owner). `layout_strip(..., grid)` snaps each
+  partition to the nearest line within the reach (`_snap_to_grid`, integer grid units), taking
+  the width from rooms between the neighbouring partitions already on the grid (rooms between
+  slide). A snap is kept only if every room keeps its minimum width (`min_units`), its minimum
+  area and its permitted area range (`area_low`/`area_high`, MUST and SHOULD): **no requirement or
+  rules limit is relaxed**. Upper storeys are usually packed at their minimum widths, so after
+  all storeys the ground floor (larger rooms, with slack) is laid out once more on the upper
+  storeys' grid (`_ground_on_upper_grid`; a band that cannot snap keeps its first layout).
+  Skeleton seeding and candidate order are untouched (determinism).
+- **Windows (build).** Placed top storey first; the V3 axis rule (§16.13) then centres a window on
+  the axis of a window of any storey already placed. After its required glazing, a habitable room
+  takes **rhythm windows** (`_rhythm_windows`) on each axis of the storeys above that falls on its
+  facade, only where that width fits exactly on the axis (clear of doors, windows, junctions) —
+  extra glazing, never a substitute for the required one.
+- **Garden doors.** Garden and terrace sliding doors stand under the centre of an upper habitable
+  room's facade span (where its window goes) when the full door fits there; never narrowed for it.
+- **Measured on the model** (`tests/layout/test_facade_grid.py`, independent of the engine):
+  exterior windows above the ground floor with a window of a lower storey on the same plan
+  centre (5 cm), reference specs 01 and 04–09: **41/84 (layout@1.8.0) → 58/86**. Per spec 4→7/11,
+  5→7/9, 13→17/25, 4→7/10, 7→8/10, 4→6/11, 4→6/10. Soft design score equal on every reference
+  spec except 05 (0.612 → 0.640, a different candidate ranks first; warnings 8 → 5); benchmark
+  unchanged (hard 147/147, soft 26/33, known gaps 0/3). Screenshots: `docs/visual/v4/`.
+- **Not aligned yet** (28/86): upper windows over a garage (01 west) or over a sliding door that
+  could not move at full width (08, 09 garden facades: the door stays centred between the two
+  windows above — symmetric, but no window below); stair and hall windows a few centimetres too
+  tight for the axis; small bathroom windows whose room below already has its window elsewhere.
+  Next steps: a bay grid chosen per facade before the rooms (rooms then take whole bays),
+  narrower garden doors as a design choice, stair windows on the core axis.
+
+### 16.15 Facade bay grid (layout@1.10.0–1.11.0, V5)
+
+Every facade line of the house (its `wall:ext` walls on one line, all storeys) is divided into
+equal **bays** before windows are placed (`layout/bays.py`, pure): the bay count gives a width in
+`LayoutConfig.bay_min_m`..`bay_max_m` (3.0–4.2 m) nearest the middle of that range (nearest fit
+when none fits, e.g. 8.45 m → 2 × 4.225 m); window axes stand at the bay centres. No schema
+change; `facade_bays = False` reproduces layout@1.9.0 exactly (test against main's geometry
+fingerprints).
+
+- **Windows on bay axes (build, step 1).** One window width per facade line and storey: the
+  widest a habitable room on it needs to meet its glazing on the axes of its main facade
+  (5 cm up, at least the rules' minimum width, at most `bay_window_share` of a bay). Required
+  glazing goes onto free axes first — an axis another storey already glazes first — and any
+  remainder is placed as before (V3/V4). Service windows stand on an axis where one takes
+  them. A storey follows a window of another storey already standing off the axes in its
+  segment (stacking first). Stair, hall and corridor windows keep the V4 axis rule
+  (`bay_circulation_windows` off: on bays they lost their stack over short halls). Garden and
+  terrace doors stand on the bay axis an upper habitable room's window will take.
+- **Rooms on whole bays (planner + engine, step 2).** The search never sees the bays (which
+  candidates are built and ranked is unchanged). After the engine chose its design,
+  `planner.rebay` lays the chosen candidate's bands out again with the bay boundaries as grid
+  lines (the V4 snap: every room keeps its minimum width and area and its permitted area range,
+  MUST and SHOULD), and `engine._on_bays` keeps that variant only if it is valid, meets every
+  MUST the original meets, scores at least as well on the design evaluation and adds no area
+  deviation. On the reference specs only 11 (L bungalow) takes it (design score 0.710 → 0.769);
+  elsewhere bands are packed at their minimum widths (nothing can move) or the snapped variant
+  scored lower (03, 05).
+- **Side facades (step 3, layout@1.11.0).** After its required glazing, a habitable room takes a
+  window on every free bay axis of its side facades (not its main facade), one width per side
+  line and storey (`bay_side_window_share` of a bay, at least the rules' minimum width). Never on
+  a facade the spec's window intent excludes, and not at all when `privacy` is a design
+  priority (the rules profile has no privacy rule; the spec's intent is honoured).
+- **Measured on the model** (`tests/layout/test_bay_grid.py`, bays recomputed from the stored
+  walls): exterior windows on a bay axis, all 12 reference specs: 12/202 (layout@1.9.0) → 57/203
+  (step 2) → 102/245 (step 3); multi-storey specs 01, 04–09: 8/149 → 71/181 (step 3). Upper windows on a window
+  below (01, 04–09): 58/86 → 58/87 (step 2) → 75/105 (step 3). Design scores equal on every
+  reference spec except 11 (higher); benchmark unchanged (hard 147/147, soft 26/33, known gaps
+  0/3). Screenshots (front, rear, east side): `docs/visual/v5/`.
+- **Limits / next steps.** Rooms rarely take whole bays: bands are sized to their rooms' areas
+  at minimum widths; a bay-aware search (bay count chosen with the band widths) would be needed.
+  A rhythm window can land beside an existing narrow window (a cluster instead of one bay);
+  circulation windows are not on bays; widths per facade and storey still vary where service and
+  stair windows share the facade (average 2.3 widths per facade line and storey on 01, 04–09).
+
+### 16.16 Window consistency (layout@1.12.0–1.14.0, V6)
+
+Three passes over the placed windows (`build._windows`, bay grid on, `LayoutConfig.window_consistency`;
+False reproduces layout@1.11.0 exactly — test against main's geometry fingerprints):
+
+- **No awkward pairs (step 1, `_merge_pairs`).** Windows of one habitable room on one facade
+  wall and storey whose centres share a bay become one window on that bay's axis, as wide as the
+  widest (up to their total if the room's glazing needs it); if that does not fit, the smaller
+  ones are dropped when the room keeps its required glazing; as a last resort the pair becomes
+  one window over its own span. Placement keeps the 0.15 m gap of `WallPlan.place`, above the
+  profile's `openings.min_clearance_m` (tested on every opening). Spans are freed with
+  `_free_span` (matched within 1 mm: `place` records them unrounded).
+- **One main width per wall and storey (step 2, `_unify_widths`).** The habitable windows' most
+  common width there (the wider on a tie; all widths come from `LayoutConfig`: bay width, side
+  rhythm width, preset-sized windows) is the main width; every other habitable window takes it,
+  centred where it stands, when it fits exactly and the room keeps its required glazing. Service
+  windows share `service_window`.
+- **Circulation windows and heads (step 3, `_align_heads`).** Stair, hall and corridor windows take
+  the bay placement. One head height per storey: the most common head (sill + height) of the
+  storey's habitable windows; stair, hall, corridor and service windows keep their height and
+  raise their sill to it — never lower (service sills stay above `service_window`'s, upper-storey
+  sills above the guard height), the head stays `lintel_min` below the wall top.
+- **Measured on the model** (`tests/layout/test_window_consistency.py`, script for 01, 04–09):
+
+| | main (layout@1.11.0) | layout@1.14.0 |
+|---|---|---|
+| Same-room pairs in one bay, 12 specs | 26 | 0 |
+| Pairs of any windows in one bay (01, 04–09) | 25 | 3 (different rooms) |
+| Habitable window widths per exterior wall and storey, 12 specs | 1.52 | 1.20 |
+| All window widths per facade line and storey (01, 04–09) | 2.32 | 2.03 |
+| Window heads per storey, 12 specs | 3.0 | 1.08 |
+| Windows on a bay axis, 12 specs | 102/245 | 110/219 |
+| Windows on a bay axis (01, 04–09) | 71/181 | 78/160 |
+| Upper windows standing on a window below (01, 04–09) | 75/105 | 62/92 (67 %) |
+
+  Merged pairs were stacked pairs on both storeys, hence fewer stacked windows in absolute terms
+  (the V4 floor, 58 and 65 %, is kept). Design scores, warnings, validation, rules checks and the
+  benchmark (hard 147/147, soft 26/33, known gaps 0/3) unchanged.
+- **Next steps.** Widths per facade line still mix main, service and stair sizes (2.03); a
+  service width snapped to the main width where glazing and privacy allow; two windows of
+  different rooms in one bay (3 left); 04's upper corridor window takes a bay its short hall below
+  cannot reach.
+
+### 16.17 Bay-aware rooms (layout@1.15.0, V7)
+
+**Step 1 — quick wins (done; `LayoutConfig.window_quick_wins`, False reproduces layout@1.14.0,
+test against main's geometry fingerprints).** After the V6 passes, before head alignment:
+
+- **Service windows at the main width** (`_service_main_width`): a bathroom/WC window takes its
+  wall's main window width, centred where it stands, keeping its height and privacy sill.
+- **Two rooms in one bay** (`_separate_rooms`): the narrower window moves to a free bay axis of
+  its own room's facade on that wall — never a window that stacks with another storey's (the
+  stack outranks the pair); failing that it is dropped only if its room keeps another window
+  and its required glazing, or if it lights a stair void (no glazing requirement). Each window
+  moves at most once (regression test: the benchmark's T-shaped villa looped without it).
+- **Stair windows stack** (`_stack_circulation`): an upper stair/hall/corridor window standing on
+  no window below moves onto a lower window's axis inside its own room's segment when it fits
+  exactly (04: the upper corridor window is back above the hall window).
+
+Measured (01, 04–09): pairs of windows of two rooms in one bay 3 → 1 (07: a WC beside the
+kitchen-living window; neither can move without breaking a stack or a neighbour's bay); widths
+per facade line and storey 2.03 → 1.85; upper windows standing on a window below 62/92 (67 %) →
+63/90 (70 %); windows on a bay axis 78/160 → 78/158 (12 specs: 110/219 → 110/217). Rooms, design
+scores, warnings, validation, rules checks and the benchmark (hard 147/147, soft 26/33, gaps
+0/3) unchanged; room partitions on bay lines 23/162 (unchanged, rooms are not touched).
+
+**Step 2 — bay-aware search (not done; findings).** Tried: every searched candidate got a twin
+with its bands re-laid on the bay lines (the V4 snap: minimum widths, minimum areas and area
+ranges kept), built and ranked next to it. Twins form for 0–251 candidates per reference spec,
+but they never win on the design evaluation: the bands are packed at their rooms' minimum
+widths, so a twin only moves a few partitions and pays for it in area/proportion criteria.
+Allowing twins a design-score tolerance of 0.005–0.02 brings room partitions on bay lines from
+23/162 to only 24/162 while lowering 03 and 05. Rooms on whole bays therefore need a planner
+change, not a ranking change: skeleton widths chosen as whole bay multiples (appended after the
+existing skeletons so seeding is unchanged), and band subdivision that gives each room an
+integer number of bays before area water-filling (falling back to today's widths per room
+where a minimum or area range would break). Left as the next step.
+
 ### 16.5 Limitations (layout@1.0.0)
 
-- One plan type (double-loaded corridor, street on the south); no L/U-shaped houses except the garage annex, no courtyards, no sloped sites, no basements.
+- One plan type (double-loaded corridor, street on the south) plus, since layout@1.5.0, a single-storey L (§16.10) and since 1.7.0 a single-storey T (§16.12); no U-shapes or courtyards (refused with the reason), no sloped sites, no basements.
 - Straight flights only; the 3-storey core is a conceptual switchback (the pocket under the second flight belongs to the staircase room). Storey height is limited to one flight (≤ 16 risers → ≤ 3.04 m with the generic profile).
 - Rooms only span a full band or are tucked against the corridor; small houses (< ~60 m² per storey) lose a large share to hall, core and corridor.
-- Windows are sized by glazing ratio per facade segment, not by view/orientation; no skylights; no guards for low upper-floor sills (sills are raised to the guard height instead).
+- Windows are sized by glazing ratio per facade segment (K3 adds per-facade size classes, not views/orientation to the sun); no skylights; no guards for low upper-floor sills (sills are raised to the guard height instead). Rooms can face the front or rear only (bands), not left/right.
 - Furniture is basic and skipped when it does not fit (e.g. shallow balconies).
 - Gable roofs inherit the Phase 1 renderer limitation (no gable-end infill).
 
@@ -352,3 +662,443 @@ Rule-based after layout: plumbing (fixtures from wet-room templates, stack, orth
 - Discipline palette: cold water `#2f80ed`, hot water `#eb5757`, drain `#8d6e63`, vent `#9e9e9e`, power `#f2c94c`, lighting `#f2994a`, supply air `#56ccf2`, return air `#bb6bd9`, refrigerant `#27ae60`.
 - Any MEP layer on → architecture switches to x-ray (transparent, `depthWrite=false`, not pickable) — the ghost material variant already provides this.
 - "Isolate system" highlights `part_of_system` members; "trace" walks `connected_to` edges to the source.
+
+## 19. Plan drawings — Phase 3.6 D1
+
+Floor plans are a second rendering of the BuildingModel, next to the 3D scene. Like meshes they are
+**derived**: never stored, never edited, rebuilt from the model on every change. One pure builder
+and one SVG renderer serve the on-screen plan and every download, so screen, SVG, PNG and PDF
+cannot disagree.
+
+```
+engine/drawing/primitives.ts   DrawItem (poly / circle / text), DrawGroup {elementId, role}, pens
+engine/drawing/plan.ts         buildPlanDrawing(index, levelId, {scale, furniture, dimensions})
+engine/drawing/symbols.ts      wall frames, doors, windows, stairs, furniture symbols, room outlines
+engine/drawing/dimensions.ts   exterior dimension chains
+engine/drawing/plan-math.ts    frames, arcs, hatch clipping, label placement
+engine/drawing/svg.ts          PlanDrawing -> SVG (presentation attributes only, paper mm)
+engine/drawing/sheet.ts        A3 sheet: frame, title, plan, north arrow, scale bar, title block
+features/drawing/              PlanView (interactive), DrawingDownloads, export.ts (files)
+```
+
+### 19.1 Rules
+
+- Every group maps to at most one model element (`elementId`); only dimension chains have none.
+  The interactive view selects that element (same selection store as the 3D view and the
+  properties panel).
+- Coordinates are model plan coordinates (meters, +Y north = up the sheet); pen widths and text
+  sizes are **paper millimeters** at the drawing scale. The renderer maps 1 m to 1000/scale mm.
+- Deterministic: elements in id order, fixed grids for the label search, numbers printed at
+  0.01 mm. The engine never reads the clock: the sheet date is passed in by the UI.
+- Room names and areas come from the model (`dimensions.area`), never measured from the drawing.
+
+### 19.2 What is drawn (per level, paint order)
+
+1. Balcony slabs (outline) and slab voids (dashed).
+2. Rooms: invisible pointer target; terraces and balconies hatched; boundary edges without a wall
+   dashed (open plan) or solid (outdoor rooms).
+3. Furniture symbols (from the element's own width, depth and rotation; follows the Furniture
+   layer), stairs (treads and walking line: "up" from the first riser on the lower level, "down" on
+   the upper level, seen through the void), railings.
+4. Cut walls as solid poché: the 3D wall joins (`computeWallJoins`) and panel rule (`wallPanels`)
+   at plan level, so every hosted opening leaves a gap of exactly its width.
+5. Openings in the gaps. Windows: wall faces, jambs and a double glazing line. Doors: jambs, the
+   leaf at 90° and its swing arc; double doors two leaves; sliding doors two offset panels; garage
+   doors the panel and its travel dashed. Every opening is shown as cut, whatever its sill height.
+   **Door direction convention:** the model stores the hinge side (`swing` left = hinge at the
+   start edge, right = at the end edge, as the 3D handle placement implies) but not the opening
+   direction. The drawing opens a door into the room it `connects` to, otherwise to the host
+   wall's left face (the interior of counter-clockwise exterior walls).
+6. Room labels: name (bold) over area ("14.3 m²", one decimal). The block goes where it fits inside
+   the room, clear of furniture, door swings and stairs, horizontal before vertical, shrinking to
+   60 % before it falls back to the room's label point.
+7. Dimension chains (§19.3).
+
+### 19.3 Dimensions
+
+Per facade side (S, E, N, W), outside the building, in millimeters with 45° ticks: (1) openings
+and footprint corners of that side, (2) the footprint corners when the footprint steps (L, T),
+(3) the overall dimension. Corners are the positions of the perpendicular outer wall faces (wall
+face ends would be off by the corner joins). Text that does not fit between its ticks moves to the
+other side of the line.
+
+### 19.4 Sheet
+
+A3 landscape with a 20 mm binding margin (5 mm elsewhere). The plan is built at the first
+standard scale at which it fits (`PLAN_SCALES`: 1:100, 1:200, 1:250, 1:500; text is fitted for
+that scale) and centered under its title ("FLOOR 1 PLAN 1:100"). Bottom strip: north arrow (+Y),
+scale bar, the single-source disclaimer, and a generic title block (not a regional stamp form):
+"Conceptual design — not for construction", project, version, drawing, scale, indoor room area of
+the level (room areas without terraces and balconies), date, sheet n / N.
+
+### 19.5 Viewer and downloads
+
+The toolbar switches **3D model / Floor plan** (the choice survives loading another version); in
+plan mode it shows the floors and the downloads. The plan zooms with the wheel around the pointer,
+pans by dragging and selects on click; the selection is highlighted with CSS over the same SVG.
+Downloads: **PDF** (vector, one A3 page per level; jsPDF + svg2pdf.js, loaded on demand),
+**SVG** (the A3 sheet of the level on screen) and **PNG** (that sheet at 150 dpi). Files are named
+`<project>-<drawing>.<ext>`, keeping letters of any script.
+
+### 19.6 Tests
+
+`engine/drawing/plan.test.ts` runs every fixture (demo, generated 2-storey, L, T): deterministic
+output, every room labelled with its model area, every element of the level drawn and every group
+mapped to an element, wall gaps equal to opening widths, A3 fit at a standard scale, door
+direction, footprint dimensions (17400 × 16800 for the L fixture), stairs on both levels, hatch
+clipping and label placement. `features/drawing/components/PlanView.test.tsx` covers the view,
+the selection highlight, the furniture layer, the download buttons and file names.
+
+### 19.7 Limitations (D1)
+
+- Read-only: editing on the plan (typed operations) is step D3.
+- PDF text uses the standard Helvetica font (WinAnsi): Latin text and "m²" print, Cyrillic or
+  Kazakh text (e.g. a project name) does not. SVG and PNG are not affected. Fix: embed a Unicode
+  font in the PDF.
+- No coordination axes or SPDS conventions (axis bubbles, level marks, section marks); the
+  `spds@1` drawing profile is not consumed (its knowledge is unapproved).
+- No overhead lines (roof eaves, upper-floor projections) and no wall hatching by material.
+- In very small rooms (a 1 × 3 m WC) the label can overlap fixtures when nothing fits.
+
+## 20. Plan editing — Phase 3.6 D2
+
+The plan view edits the BuildingModel through typed operations (docs/building-model.md §5.1); the
+API applies and validates them, the client renders what the API returns.
+
+```
+features/editing/api.ts     POST /projects/{id}/versions/{vid}/edits/preview | /edits
+features/editing/store.ts   session: base version, operations, cursor (undo/redo), messages
+engine/drawing/wall-edit.ts gesture helpers: movable walls, normal, 5 cm snap, compass labels
+features/drawing/components PlanView (drag + live preview), PlanEditBar (undo/redo/save, moves)
+```
+
+- **Session.** Opened for the version shown in the project editor (not on the demo page). The
+  operation list is kept in the tab; `cursor` operations are applied; undo/redo move the cursor and
+  re-request the preview (undo to 0 shows the base model without a request). A new operation after
+  an undo drops the redo branch. "Save version" posts the applied operations; the new version
+  (source `manual`) opens and a new session starts on it. Unsaved edits are guarded on version
+  switch and on leaving the page.
+- **Gesture.** Select a wall (D2.5: exterior walls too, see below), then drag it (or use ↑↓/←→, Shift ×5, or the distance
+  field and compass buttons). The drag is projected on the wall normal and snapped to 5 cm. Each
+  new snapped position is checked by the server (debounced 60 ms, latest wins, stale answers
+  dropped); a valid answer replaces the drawing with the returned model (areas, dimensions, joined
+  walls, step walls), and an outline shows the dragged position — blue checking, green valid, red
+  refused with the reason. Release applies only a valid position (reusing the matching check).
+- **One model.** The applied model is loaded into the building store, so the plan, the properties
+  panel, the 3D view and every download (§19) show the same edited model. Edits keep the plan's
+  zoom and pan. Downloads made with unsaved edits say so in the title block
+  (`v3 · … + 2 unsaved changes`).
+- **Which version opens.** The editor opens the version chosen in this tab, else the version of
+  the AI generation in the `?generation=` link, else the project's latest version. As soon as
+  another version than the linked generation's is open (saved edits, the version menu, history, a
+  new design) the page drops `?generation=` from the URL (`router.replace`), so a reload opens the
+  latest version instead of bringing the generation's older model back (regression test:
+  `features/editor/components/ProjectEditor.test.tsx`).
+- **Tests.** `wall-edit.test.ts` (directions, snapping, outline), `features/editing/store.test.ts`
+  (apply/refuse/undo/redo/redo-branch/check/discard/save against a mocked API),
+  `PlanEditBar.test.tsx` (controls, keyboard, refusal display); API: `tests/building/test_operations.py`
+  (incl. a Hypothesis property: every move is refused or consistent — area conserved, openings in
+  place, other levels untouched) and `tests/test_editing_api.py`.
+- **Room resizing (D2.2).** Selecting a room in an editing session shows a handle on every side
+  (`engine/drawing/room-edit.ts roomSides`, the same classification as the server): blue = movable
+  (interior walls over its whole length), grey = exterior / open / partly a wall, with the reason in
+  the edit bar. Clicking a handle chooses the side; dragging it previews `resize_room` (outline of
+  the room with the side moved, the moved side drawn thick; the status gives the room's new area
+  and extent from the server's model). The edit bar offers Enlarge / Shrink by a distance; arrows
+  towards / away from the side's direction nudge it. After a resize the chosen side is found again
+  by geometry (`relocateSide`, side numbers change when an outline is simplified); undo, redo and
+  discard clear the choice.
+- **Doors and windows (D2.3).** `engine/drawing/opening-edit.ts` (pure: wall under a point,
+  5 cm snap of the start edge, outline, wall left on each side, slide directions, sizes of a new
+  opening copied from the model's first opening of that kind). Openings get an invisible pointer
+  target over their span in the interactive plan only (`plan.ts`, added after extents and label
+  obstacles, so drawings and downloads are unchanged). Drag a selected door or window along its
+  wall, or onto another wall of the level (the dragged wall wins near corners): every snapped
+  position is checked (`move_opening`), the status gives the wall and the wall left on each side,
+  red with the reason when refused. The edit bar gives its size and wall, a Position field (m from
+  the wall start), ← → slides (arrow keys, Shift ×5) and Remove (Delete). "+ Door" / "+ Window"
+  open the add panel (kind, width, height, sill); hovering a wall shows the checked outline, a click
+  places it (`add_opening`) and selects the new opening; Esc or Cancel stops. Tests:
+  `opening-edit.test.ts`, `PlanView.test.tsx` (drag along and onto a wall), `PlanEditBar.test.tsx`,
+  `ProjectEditor.test.tsx` (move, add by clicking, remove, undo/redo, refusal, discard, save,
+  reload; plan wall gaps, 3D meshes and download sheets checked against the stored model); API:
+  `tests/building/test_opening_operations.py` (incl. a Hypothesis property: every opening move is
+  refused or consistent) and `tests/test_editing_api.py`.
+- **Opening sizes, walls and rooms (D2.4).** While a version is open for editing, the properties
+  panel shows an *Edit* section for the selected element (`features/editing/components/
+  ElementEditSection.tsx`): a door or window's Width / Height (/ Sill), an interior wall's
+  "Remove wall…" and "Remove & merge rooms…" (two steps: the second shows what will happen — rooms
+  opened or merged with the merged area, doors removed with the wall — and asks to confirm), a
+  room's Name and Room type (only types `set_room_type` supports; staircase / garage / outdoor rooms
+  say why not). Every prepared change is checked live (`use-draft-check.ts`: debounced, latest
+  wins) and published as the session's `draft`, so the plan draws the model the server returned
+  for it (a refused opening size is drawn as a red outline in its wall); the verdict, reasons and
+  warnings (e.g. `EDIT_PROGRAM_CHANGED`) are shown beside the fields, and Apply / Confirm reuses
+  the checked answer. On the plan a selected door or window has a grip at each end: dragging one
+  resizes it along its wall (5 cm snap, the other end stays), checked live like a move
+  (`resize_opening` with the new start offset and width). The controls work in the 3D view too;
+  undo / redo / discard / save stay in the plan's edit bar. Tests: `ElementEditSection.test.tsx`,
+  `PlanView.test.tsx` (grips, draft preview), `store.test.ts`, `edited-model.test.ts` (plan,
+  sheets and 3D of an edited model); API: `test_resize_opening.py`,
+  `test_wall_removal_and_rooms.py` (Hypothesis properties for resizes and wall removals),
+  `test_editing_api.py`.
+- **Adding walls (D2.4).** "+ Wall" in the edit bar opens the wall panel (direction north–south /
+  east–west, a door in the new wall with its width, the new room's type). Hovering a room draws the
+  wall across it through the snapped point (`engine/drawing/wall-add.ts`: room under the pointer,
+  5 cm snap, the line across the arm that holds the point), checked live (`add_wall`) green or red
+  with the reason; a click places it and selects the new room, so it can be renamed and typed in
+  the properties panel. Esc or Cancel stops. Tests: `wall-add.test.ts`, `PlanView.test.tsx`,
+  `PlanEditBar.test.tsx`; API: `test_wall_addition.py` (Hypothesis: every new wall is refused or
+  consistent).
+- **Envelope editing (D2.5).** Exterior walls are dragged like interior ones (`isMovableWall`:
+  every wall but partitions; `isFacade`): the server moves the whole facade on every storey with
+  the floor slabs, the roof eaves/verge/parapet line, balconies, terraces and the canopy
+  (docs/building-model.md §5.6), so the live preview is the server's model — the new footprint and
+  room areas on the plan — and, while a facade is selected or a room's facade side is chosen, the
+  roof's eaves outline is drawn dashed over the plan from the same preview model
+  (`wall-edit.ts roofOutlines`; edit overlay only, not part of drawings or downloads). Refusals
+  (a garage front in line, a wing joined to the facade, the stair opening cut, a roof that cannot
+  follow, a room under the profile minimum) are shown red with the server's reason. A room's facade
+  side is resizable (`RoomSide.resizable`); a balcony or terrace at the facade it hangs on, and a
+  side along several walls including a facade, stay grey with the reason. The properties panel
+  shows, for any wall, **Thickness** (an exterior wall: the whole facade; limits from the rules
+  profile's `walls` section), **Finish** (face: facade / inside / both for exterior walls, left /
+  right / both otherwise; materials from the library's wall-finish categories) and, for walls that
+  carry nothing, **Height**; each is checked live and published as the draft, with Apply. The 3D
+  view and every download render the applied model like any other edit. Tests:
+  `wall-edit.test.ts`, `room-edit.test.ts`, `PlanView.test.tsx` (facade drag, roof outline),
+  `PlanEditBar.test.tsx`, `ElementEditSection.test.tsx`; API: `test_envelope_editing.py`,
+  `test_editing_api.py`. Not yet: facades a garage or wing continues or joins (L/T inner corners),
+  balconied facades' thickness, curved or diagonal walls, moving several facades at once.
+- **Limits (D2.1).** Only `move_wall` on interior walls (D2.5: and facades); no snapping to other walls; the preview is
+  a server round trip per 5 cm step (fine locally; port the applier to TS if it needs to be faster,
+  architecture.md §5.2); drafts are not persisted server-side.
+
+## 21. Rendering & visual quality — V1 step 1 (2026-10-31)
+
+Scope: how the viewer *looks*. Nothing here changes the BuildingModel, the layout engine, golden
+files, the API or the 2D plan drawings (they use `engine/drawing`, not the 3D materials). The
+determinism contract is unchanged: builders still take only (element, ctx); textures and lights
+are applied by the viewer and `MaterialCache` after geometry is built.
+
+### 21.1 Pipeline
+
+```
+Canvas (frameloop="demand", PCF shadows, ACES Filmic tone mapping, exposure RENDER.exposure)
+ ├─ SceneEnvironment   local HDRI (drei <Environment files>, image-based light + reflections only;
+ │                     error boundary → hemisphere light if the file cannot load)
+ │                     sun: directional light, 2048² PCF shadow map, shadow radius 4 (soft edges),
+ │                     switched off while a section cut is active
+ │                     contact shadows under the building (drei ContactShadows, off when sectioned)
+ │                     site ground: grass disc, library material `site_grass`, UVs in meters
+ │                     sky: neutral vertex-colour gradient dome (not tone mapped) + distance fog
+ │                     reference grid (viewer-store `showGrid`, toolbar "Grid", default off)
+ ├─ ModelRoot          building meshes (unchanged), materials from MaterialCache
+ ├─ PostEffects        viewer-store `effects` (toolbar "Effects", default on):
+ │                     EffectComposer → N8AO (half resolution, medium quality) → SMAA → ACES
+ │                     Filmic ToneMapping effect (the composer disables renderer tone mapping
+ │                     while mounted). Off = plain renderer with MSAA and the same tone mapping.
+ └─ MaterialTextures   invalidates the on-demand canvas when a texture finishes loading
+```
+
+All look-development numbers (HDRI file, intensities, exposure, sky colours, AO and contact-shadow
+parameters) live in one file, `viewer/render-settings.ts`.
+
+### 21.2 Materials and textures
+
+- `data/materials/library.json` stays the only material source. A preset may carry
+  `textures: { albedo, normal, roughness, tile_size_m: [u, v], tint? }` (paths relative to
+  `data/materials`), `shading: "glass"` and `env_intensity`. `tile_size_m` is the asset's
+  published real-world size; the measured repeat (≈ 70 mm brick courses, 300 mm floor tiles,
+  136 mm slate courses, 212 mm boards) is recorded in ASSETS.md. Every asset is recorded in
+  `data/materials/ASSETS.md` (CC0 only: ambientCG, Poly Haven); a test keeps the library and
+  ASSETS.md in sync and checks that every slot marked present ships its files.
+- `MaterialCache` gets an injected `TextureSource` (the engine does no I/O; `viewer/textures.ts`
+  installs the browser loader, tests use fakes). One texture per (file, repeat) is shared by all
+  materials and variants; `repeat = 1 / tile_size_m`; albedo is sRGB, normal/roughness linear;
+  anisotropy 8. Ghost (isolated-floor) variants are never textured.
+- **Fallback:** the flat library `color` is used until a map has loaded and stays if it never
+  does (missing file, empty slot). With an albedo map the colour becomes `textures.tint`
+  (default white); a K3 display colour (`id@#rrggbb`) multiplies the map instead.
+- `scripts/sync-materials.mjs` (run by the web `dev` and `build` scripts) copies
+  `data/materials/{textures,hdri}` to `apps/web/public/materials/` (git-ignored) and writes
+  `manifest.json`; the browser requests only files listed there, so empty slots cost no request.
+- **Glass** (`shading: "glass"`): `MeshPhysicalMaterial`, transparent (opacity 0.3), roughness
+  0.05, IOR 1.5, clear coat, environment reflections ×1.6, library tint. No transmission pass
+  (keeps the cost of a transparent standard material).
+
+### 21.3 UVs (meters)
+
+`MeshBuilder` writes planar UVs in meters (1 UV unit = 1 m) in the element's local frame, so a
+texture's `tile_size_m` is its real size on every element. Horizontal faces (|n.z| > 0.9999) use
+the plan axes; every other face gets **u level along the face and v up the face** — brick courses
+run level on walls, and roof tile rows run parallel to the eave on every roof slope (before
+engine@2, slopes shallower than ~25.8°, i.e. |n.z| > 0.9, used the plan axes). The site ground uses the same convention
+(`engine/scene/site.ts`). Tests: `mesh-builder.test.ts` (UV distances equal edge lengths under
+rotation; slope axes), `site.test.ts`.
+
+### 21.4 Window detail (engine@2)
+
+Windows add a glazing bead (25 mm, shallower than the frame) around every pane and reveal
+linings (12 mm) on jambs, head and sill between the frame and each wall face, in the host wall's
+face finishes (left face → interior lining, right face → exterior lining, display colours
+included). Reveals therefore read as plaster / render instead of the raw wall core. All parts stay
+in the window's `body` descriptor, so selection and the mesh ↔ element mapping are unchanged.
+`EngineConfig.version` is `engine@2` (UVs of sloped faces and window geometry changed).
+
+### 21.5 Performance
+
+Effects on: one extra depth/normal pass for N8AO at half resolution, SMAA, contact shadows
+(one depth render from below + blur per frame) — only on demand frames (camera moves,
+changes). Shadows stay PCF 2048². "Effects" turns post-processing off on slow devices.
+
+### 21.6 Limitations (V1 step 1)
+
+- Assets (2026-11-01): nine 1K CC0 texture sets and the 1K Poly Haven "Potsdamer Platz" `.hdr`,
+  all from Poly Haven (≈ 17 MB, `data/materials/ASSETS.md`). ambientCG's download CDN is not
+  reachable from the build environment, so none of its sets is used. Painted interior plaster has
+  relief maps only (flat paint colour); grass and concrete use tints to correct the assets'
+  colour cast.
+- UVs start at each element's local origin: textures are continuous along a wall but not across
+  wall corners or between elements.
+- No transmission/refraction in glass, no screen-space reflections, no bloom; interior views get
+  sky light through the openings only via the HDRI (no light probes).
+- `three` removed `PCFSoftShadowMap`; soft shadow edges come from the PCF shadow radius.
+
+## 22. Furniture models and site — V2 (2026-11-01)
+
+Scope: the viewer only. The BuildingModel schema, layout output, golden files, API and the 2D
+plan drawings and downloads are unchanged. `EngineConfig.version` is `engine@3` (window frames
+moved, below).
+
+### 22.1 Window reveals (V1 review fix)
+
+Windows in exterior walls are set 50 mm behind the outer face (`openings.ts windowFrameV`), not on
+the wall centre line: the interior reveal (jambs, head, sill) is deep and lined with the host's
+interior finish, the exterior reveal shallow and lined with the facade finish. Before, half of
+every reveal was the exterior (brick) reveal, seen through the glass from inside. Interior-wall
+windows stay centred. Test: `builders.test.ts` (every exterior-wall window of the demo and the
+generated house: four lining boxes per side, right finish, interior reveal the deep one).
+
+### 22.2 Ceilings (V1 review question)
+
+The Interior preset isolates its floor (§14), which hides the slab above: the sky there is
+intended, not a bug. With all floors shown, the slab underside is drawn in the slab's material;
+rooms carry `ceiling_assembly_ref`, but nothing assigns ceilings yet (building-model.md §3), so no
+ceiling finish is invented. A soft hemisphere "bounce" light (`RENDER.bounce`) keeps soffits and
+eaves from going black.
+
+### 22.3 Furniture models
+
+```
+data/materials/models.json   id, file (models/<id>.glb), use (furniture|tree|bush), kinds,
+                             yaw_deg (front -> glTF +Z), bounds (glTF scene box, Y-up)
+engine/materials/models.ts   schema; furnitureModel(kind, asset_id); fitToDimensions(); fitToHeight()
+engine/builders/furniture/assets.ts  furnitureSource(): registered asset > manifest model > procedural
+viewer/ModelRoot.tsx         FurnitureModel: invisible placeholder proxy + ModelInstance(fit matrix)
+viewer/ModelInstance.tsx     GLTFLoader + three's MeshoptDecoder (local, no CDN), Suspense/error
+                             boundary -> placeholder fallback
+```
+
+- **The BuildingModel is the source of truth:** `fitToDimensions` maps the model's bounds exactly
+  onto the element's `width × depth × height` (non-uniform scale) in the furniture frame (origin =
+  base centre, width x, depth y, front −y, Z-up). glTF Y-up → Z-up is a rotation (never mirrored).
+- The procedural placeholder is still built for every piece: it is the invisible pick proxy
+  (selection, outline, bounds) and the fallback while a model loads, if its file is not served or
+  fails, and for ghosted (isolated-floor) furniture. Kinds without a model (bed, wardrobe, TV unit,
+  kitchen units, fridge, sanitary ware — `ASSETS.md` TODO) keep the placeholder.
+- Models are requested only when `public/materials/manifest.json` lists them (`viewer/served-assets.ts`).
+- **Materials (recorded exception, CLAUDE.md):** furniture and vegetation models carry their own
+  embedded CC0 PBR materials. Building elements still take materials only from `library.json`
+  via `MaterialCache`; the furniture element's `material_id` stays model data (placeholder,
+  properties panel).
+- Model meshes are not pickable and carry no `elementId`; the proxy carries `{ elementId, part }`.
+  Foliage that is alpha-blended in the source is switched to alpha-test (sorting, shadows).
+
+### 22.4 Site
+
+`engine/scene/site.ts planSite(index, bounds)` (pure, model space, deterministic) →
+`SitePlan { streetY, strips, plants, fence }`, drawn by `viewer/SiteLayer.tsx` under the same
+coords.ts root rotation as the building ("Site" toolbar toggle, default on). Never part of the
+BuildingModel, never pickable.
+
+| Item | Rule |
+|---|---|
+| Street | `streetY = bounds.min.y − 7 m` (south) |
+| Path | from the centre of the `entrance` door on the facade face to the street; straight for a street-side door, out 1.5 m then south for a side door, around the nearer end for a garden-side door; width max(1.2 m, door + 0.4 m); library `site_paving` (UVs in meters) |
+| Driveway | the same route from each `garage` door, width door + 1.6 m |
+| Trees | four fixed slots off the building corners (> 3.5 m from every facade), skipped when within 2.4 m of a strip; height 4.2–5.6 m and rotation from `hashFraction(slot)` (FNV-1a, no randomness) |
+| Shrubs | a row 1 m in front of the street facade every 2.4 m, skipped near strips |
+| Fence | 0.9 m timber (`wood`) on the street edge, open where a strip reaches it |
+
+Tests (`site.test.ts`, demo + generated rectangular/L/T houses): identical plan and mesh across
+builds and reversed element order; path starts at the entrance door and ends at the street; one
+driveway per garage door; plants outside the building and clear of strips, trees clear of the
+facades; fence gaps; paving UVs in meters. `models.test.ts`: every GLB self-contained (no
+external URIs), meshopt-compressed, recorded in ASSETS.md, < 40 MB in total; exact fit to element
+dimensions; axis conversion.
+
+### 22.5 Performance
+
+Furniture models are 0.2–22k triangles each (one shared geometry per file, clones per instance);
+trees are simplified to ~40k triangles (from ~2M) and shrubs to ~11k; all textures 512 px WebP;
+3.1 MB of models in total. Models load lazily after the building is shown (placeholders first).
+"Site" and the Furniture layer can be switched off.
+
+### 22.6 Limitations (V2)
+
+- No suitable CC0 model on Poly Haven for beds, wardrobes, TV units (with screen), kitchen units,
+  fridges or sanitary ware; those stay boxes. Non-uniform fitting stretches a model when the
+  element's proportions differ a lot from the model's.
+- Site placement is generic (street assumed south, no plot boundary from the spec, no terrain).
+- Trees are heavily simplified (thinner crowns than the originals).
+- No ceilings until the model assigns ceiling assemblies.
+
+## 23. Architectural design quality — V3 (2026-11-01)
+
+Generated houses get roofs, facades and entrances that read as designed rather than as boxes.
+Model and layout parts: §16.13 and building-model.md (schema 1.3.0). Renderer parts (engine@4):
+
+### 23.1 Roofs
+
+- **Gable-end infill** (`roof.ts gableEnds`): the triangle between the gable wall's top and the
+  roof underside, at the wall's outer face (the verge overhangs it by `overhang`), as thick as
+  the wall, in the finishes of the roof's supporting walls (`roofEnclosure`: exterior walls with
+  a `supports` relationship to the roof, lowest id). The model's walls stop at the eaves line;
+  like wall joins, the infill is derived, not stored.
+- **Parapets** of flat roofs carry the facade finish of the supporting walls and a `roof_trim`
+  coping (overhanging both faces 3 cm); flat-roof edges and soffits are `roof_trim`.
+- **Fascia, verge and soffit** of pitched roofs: `roof_trim` (anthracite metal); the covering
+  keeps the roof's material (`roof`, flat roofs `roof_membrane`, §16.13).
+- In the plan (§19) roofs are not drawn (above the cut plane); the entrance canopy is (below).
+
+### 23.2 Facades and entrance
+
+- Facade zoning and window axes are model data (§16.13): every wall face shows its
+  `finish_right_id`, window reveals line with it (§22.1), gable infill and parapets continue it.
+- The entrance canopy is an ordinary slab to the renderer (prism from its top face down) and is
+  drawn **dashed** on its level's plan as an overhead element (`plan.ts`).
+
+### 23.3 Design systems
+
+Design systems (K3) are editorial drafts, and generation only uses approved ones, so today the
+architectural style of the spec drives zoning and canopy material. When a system is approved
+and selected, its first style tag takes over (tested with an approved copy of the catalog).
+Design-system records do not carry zoning yet (next step: a `facade.zones` field in a new pack
+version, docs/knowledge.md §3.5).
+
+### 23.4 Tests
+
+`layout/test_architecture_quality.py` (zoning by style and by design system, colour disables
+zoning, timber cladding on a timber core, roof coverings, one valid canopy per reference house,
+a misplaced canopy is reported), `building/test_migrations.py` (1.2.0 → 1.3.0), web
+`builders/roof.test.ts` (gable infill, parapet coping, determinism) and
+`scene/canopy.test.ts` (canopy above the door head, dashed on the plan).
+
+### 23.5 Limitations (V3)
+
+- Window axes align only where an upper room's facade segment contains an axis of the storey
+  below; a full facade grid needs the planner to coordinate room widths across storeys.
+- One canopy shape (flat, rectangular); no recessed porch (it would change the room plan).
+- Zoning is per architectural style in `LayoutConfig`; design systems do not define it yet.
+- Gable infill takes one wall's finishes for both gable ends.

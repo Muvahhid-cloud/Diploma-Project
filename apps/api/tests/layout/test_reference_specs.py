@@ -17,8 +17,8 @@ from tests.layout.helpers import PROFILE, SPEC_PATHS, load_spec, reference, room
 NAMES = [p.name for p in SPEC_PATHS]
 
 
-def test_there_are_ten_reference_specs() -> None:
-    assert len(NAMES) == 10
+def test_there_are_twelve_reference_specs() -> None:
+    assert len(NAMES) == 12  # 11: the L-shaped bungalow (V1.1); 12: the T-shaped one (V1.3)
 
 
 @pytest.mark.parametrize("name", NAMES)
